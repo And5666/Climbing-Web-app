@@ -1,0 +1,148 @@
+{% extends "climbs/base.html" %}
+{% load static %}
+
+{% block title %}Leaderboard{% endblock %}
+
+{% block content %}
+<div class="boards">
+    <h2>Leaderboard</h2>
+    <div class="board-columns">
+        {% for wall in walls %}
+            <section class="board">
+                <h3>{{ wall.wall_display }}</h3>
+                {% if wall.is_archived %}
+                    <p class="archive-note">Archived · {{ wall.selected_set.range_start|date:"j M Y" }}{% if wall.selected_set.range_end %} – {{ wall.selected_set.range_end|date:"j M Y" }}{% endif %} · <a href="{% url 'climbs:leaderboard' %}">Back to current</a></p>
+                {% endif %}
+                {% if wall.me %}
+                    <p class="me-line"><span class="row-user">{% if wall.me.avatar %}<img src="{% get_media_prefix %}{{ wall.me.avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>{% endif %}You: #{{ wall.me.rank }} of {{ wall.me.of }} · {{ wall.me.points }} pts · {{ wall.me.climbs }} sends</span></p>
+                {% elif user.is_authenticated %}
+                    <p class="muted">You're unranked here — log a send to join.</p>
+                {% endif %}
+                {% if wall.rows %}
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr><th>#</th><th>Climber</th><th>Sends</th><th>Points</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for row in wall.rows %}
+                                    <tr class="{% if row.user__username == user.username %}me{% endif %}{% if row.user__username == user.username and forloop.counter > 10 %} {% endif %}{% if forloop.counter > 10 %}extra-row{% endif %}"{% if forloop.counter > 10 %} hidden{% endif %}>
+                                        <td>{% if row.position <= 3 %}<span class="pos-{{ row.position }}">{{ row.position }}</span>{% else %}{{ row.position }}{% endif %}</td>
+                                        <td><button class="user-chip row-user" data-username="{{ row.user__username }}" type="button">{% if row.user__avatar %}<img src="{% get_media_prefix %}{{ row.user__avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ row.user__username|first|upper }}</span>{% endif %}{{ row.user__username }}</button></td>
+                                        <td>{{ row.climb_count }}</td>
+                                        <td>{{ row.total_points }}</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if wall.rows|length > 10 %}
+                        <button class="btn btn-sm btn-secondary board-toggle" type="button">Show all {{ wall.rows|length }}</button>
+                    {% endif %}
+                {% else %}
+                    <p class="muted">No ascents logged for this set yet.</p>
+                {% endif %}
+            </section>
+        {% endfor %}
+    </div>
+
+    <div class="board-columns">
+        {% for wall in walls %}
+            <section class="board">
+                <h3>{{ wall.wall_display }} · stats</h3>
+                {% if wall.stats and wall.stats.total_sends %}
+                    <ul class="plain rank-list">
+                        <li><span>Best rated</span>
+                            {% if wall.stats.best_rated %}
+                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.best_rated.climb.id }}"><span class="grade-pill {{ wall.stats.best_rated.climb.tag_class }}">{{ wall.stats.best_rated.climb.grade }}</span>
+                                {{ wall.stats.best_rated.climb.name|default:wall.stats.best_rated.climb.colour }}</a> · <span class="rating-num">{{ wall.stats.best_rated.avg }} ({{ wall.stats.best_rated.count }})</span></span>
+                            {% else %}
+                                <span class="muted">—</span>
+                            {% endif %}
+                        </li>
+                        <li><span>Most popular</span>
+                            {% if wall.stats.most_popular %}
+                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.most_popular.climb.id }}"><span class="grade-pill {{ wall.stats.most_popular.climb.tag_class }}">{{ wall.stats.most_popular.climb.grade }}</span>
+                                {{ wall.stats.most_popular.climb.name|default:wall.stats.most_popular.climb.colour }}</a> · {{ wall.stats.most_popular.sends }} sends</span>
+                            {% else %}
+                                <span class="muted">—</span>
+                            {% endif %}
+                        </li>
+                        <li><span>Softest</span>
+                            {% if wall.stats.softest %}
+                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.softest.climb.id }}"><span class="grade-pill {{ wall.stats.softest.climb.tag_class }}">{{ wall.stats.softest.climb.grade }}</span>
+                                {{ wall.stats.softest.climb.name|default:wall.stats.softest.climb.colour }}</a> · {{ wall.stats.softest.votes }} softer</span>
+                            {% else %}
+                                <span class="muted">—</span>
+                            {% endif %}
+                        </li>
+                        <li><span>Hardest</span>
+                            {% if wall.stats.hardest %}
+                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.hardest.climb.id }}"><span class="grade-pill {{ wall.stats.hardest.climb.tag_class }}">{{ wall.stats.hardest.climb.grade }}</span>
+                                {{ wall.stats.hardest.climb.name|default:wall.stats.hardest.climb.colour }}</a> · {{ wall.stats.hardest.votes }} harder</span>
+                            {% else %}
+                                <span class="muted">—</span>
+                            {% endif %}
+                        </li>
+                        <li><span>Total</span>
+                            <span>{{ wall.stats.total_sends }} sends · {{ wall.stats.climbers }} climbers</span>
+                        </li>
+                    </ul>
+                    <h4>Sends by grade</h4>
+                    <div class="graph">
+                        {% for g in wall.stats.grade_graph %}
+                            <div class="graph-row">
+                                <span class="graph-grade">{{ g.grade }}</span>
+                                <span class="graph-track">{% for s in g.segments %}<span class="gbar {{ s.tag }}" style="width:{{ s.pct }}%"></span>{% endfor %}</span>
+                                <span class="graph-count">{{ g.sends }}</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="muted">No sends logged on this set yet.</p>
+                {% endif %}
+            </section>
+        {% endfor %}
+    </div>
+
+    <details class="past-boards">
+        <summary>Past boards</summary>
+        {% for wall in walls %}
+            <h4>{{ wall.wall_display }}</h4>
+            {% if wall.archived_sets %}
+                <form method="get" action="{% url 'climbs:leaderboard' %}" class="past-list">
+                    {% for s in wall.archived_sets %}
+                        <button type="submit" name="{{ wall.wall }}_set" value="{{ s.id }}"{% if wall.selected_set and s.id == wall.selected_set.id %} aria-current="true"{% endif %}>
+                            <span>{{ s.range_start|date:"j M Y" }}{% if s.range_end %} – {{ s.range_end|date:"j M Y" }}{% endif %}{% if wall.selected_set and s.id == wall.selected_set.id %} · viewing{% endif %}</span>
+                            <span class="past-meta">{{ s.n_climbs }} climbs · {{ s.n_sends }} sends</span>
+                        </button>
+                    {% endfor %}
+                </form>
+            {% else %}
+                <p class="muted">Nothing archived yet.</p>
+            {% endif %}
+        {% endfor %}
+    </details>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Top 10 by default; one tap reveals the full board (already rendered,
+    // so no extra request — fast on weak phones).
+    document.querySelectorAll('.board-toggle').forEach((btn) => {
+        const board = btn.closest('.board');
+        const rows = board.querySelectorAll('.extra-row');
+        const table = board.querySelector('table');
+        const total = table.querySelectorAll('tbody tr').length;
+        btn.addEventListener('click', () => {
+            const showing = rows[0].hasAttribute('hidden');
+            rows.forEach((r) => {
+                if (showing) r.removeAttribute('hidden');
+                else r.setAttribute('hidden', '');
+            });
+            btn.textContent = showing ? 'Show top 10' : 'Show all ' + total;
+        });
+    });
+</script>
+{% endblock %}

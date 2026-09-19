@@ -1,0 +1,146 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-theme="blueprint">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Climb Map{% endblock %}</title>
+    <script>
+        // Apply the saved theme before first paint so there is no
+        // flash. Unknown values (retired names) fall back to blueprint.
+        try {
+            const saved = localStorage.getItem('summit-theme');
+            document.documentElement.dataset.theme = [
+                'abyss', 'blueprint', 'ember', 'forest', 'clay',
+            ].includes(saved) ? saved : 'blueprint';
+        } catch (e) { /* private mode: stay on blueprint */ }
+    </script>
+    <link rel="stylesheet" href="{% static 'climbs/style.css' %}">
+</head>
+<body>
+    <div class="bg-fixed"></div>
+
+    <nav>
+        <span class="brand" aria-hidden="true">summit<span class="brand-mark">_map</span></span>
+        <div class="nav-links">
+            <a href="{% url 'climbs:map' %}">Map</a>
+            <a href="{% url 'climbs:leaderboard' %}">Leaderboard</a>
+            {% if user.is_staff %}
+                <a href="{% url 'climbs:climb-admin' %}">Admin</a>
+            {% endif %}
+        </div>
+        <div class="nav-user">
+            {% if user.is_authenticated %}
+                <a href="{% url 'accounts:profile' %}" class="nav-profile">
+                    {% if user.avatar %}
+                        <img src="{{ user.avatar.url }}" alt="" class="avatar-sm">
+                    {% else %}
+                        <span class="avatar-sm avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>
+                    {% endif %}
+                    <span class="nav-name">{{ user.username }}</span>
+                </a>
+                <form method="post" action="{% url 'logout' %}" style="display:inline;">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-sm btn-secondary">Log out</button>
+                </form>
+            {% else %}
+                <a href="{% url 'login' %}">Sign in</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    {% if messages %}
+        <div class="flash-wrap">
+            {% for message in messages %}
+                <p class="flash flash-{{ message.tags }}">{{ message }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <div class="watermark" aria-hidden="true">summit<span class="brand-mark">_map</span></div>
+
+    <div id="user-card" aria-hidden="true">
+        <div class="user-scrim" data-close-user></div>
+        <section class="user-box" role="dialog" aria-modal="true" aria-label="Climber">
+            <button class="user-x" data-close-user aria-label="Close">×</button>
+            <div id="user-body"></div>
+        </section>
+    </div>
+
+    <script>
+        // Climber card: any [data-username] button opens a mini profile
+        // with picture, totals and current ranks. One delegated listener
+        // covers boards and popup comments alike.
+        (function () {
+            const card = document.getElementById('user-card');
+            const body = document.getElementById('user-body');
+            if (!card || !body) return;
+
+            function esc(s) {
+                const d = document.createElement('div');
+                d.textContent = s ?? '';
+                return d.innerHTML;
+            }
+
+            function closeCard() {
+                card.classList.remove('open');
+                card.setAttribute('aria-hidden', 'true');
+                body.innerHTML = '';
+            }
+
+            async function openCard(username) {
+                body.innerHTML = '<p class="muted">Loading…</p>';
+                card.classList.add('open');
+                card.setAttribute('aria-hidden', 'false');
+                try {
+                    const res = await fetch(
+                        '/climbers/' + encodeURIComponent(username) + '/');
+                    if (!res.ok) throw new Error('missing');
+                    const u = await res.json();
+                    const pic = u.avatar
+                        ? '<img src="' + esc(u.avatar) + '" alt="" class="avatar-lg">'
+                        : '<span class="avatar-lg avatar-fallback" aria-hidden="true">' +
+                          esc((u.username || '?').charAt(0).toUpperCase()) + '</span>';
+                    const ranks = (u.ranks || []).map(r =>
+                        '<li><span>' + esc(r.wall) + '</span>' +
+                        (r.position
+                            ? '<span class="rank-score">#' + r.position + ' of ' + r.of +
+                              ' · ' + r.points + ' pts</span>'
+                            : '<span class="muted">unranked</span>') + '</li>'
+                    ).join('');
+                    body.innerHTML =
+                        '<div class="profile-head">' + pic +
+                        '<div><h3>' + esc(u.username) + '</h3>' +
+                        '<p class="muted">climbing since ' + esc(u.since) + '</p></div></div>' +
+                        '<div class="profile-stats">' +
+                        '<div><span class="stat-num">' + u.sends + '</span><span class="stat-label">sends</span></div>' +
+                        '<div><span class="stat-num">' + u.points + '</span><span class="stat-label">pts</span></div>' +
+                        '<div><span class="stat-num">' + esc(u.best_grade || '—') + '</span><span class="stat-label">best</span></div>' +
+                        '</div>' +
+                        (ranks ? '<ul class="plain rank-list">' + ranks + '</ul>' : '');
+                } catch (e) {
+                    body.innerHTML = '<p class="muted">Could not load that climber.</p>';
+                }
+            }
+
+            document.addEventListener('click', (e) => {
+                const chip = e.target.closest('[data-username]');
+                if (chip) {
+                    openCard(chip.dataset.username);
+                    return;
+                }
+                if (e.target.closest('[data-close-user]')) closeCard();
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && card.classList.contains('open')) closeCard();
+            });
+        })();
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

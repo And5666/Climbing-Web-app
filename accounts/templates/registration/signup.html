@@ -1,0 +1,44 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}Sign Up{% endblock %}
+
+{% block content %}
+    <div class="auth-form">
+        <h2>Create an account</h2>
+        <form method="post">
+            {% csrf_token %}
+
+            <label for="{{ form.username.id_for_label }}">Username</label>
+            {{ form.username }}
+            {% for error in form.username.errors %}
+                <p class="auth-error">{{ error }}</p>
+            {% endfor %}
+
+            <label for="{{ form.email.id_for_label }}">Email</label>
+            {{ form.email }}
+            {% for error in form.email.errors %}
+                <p class="auth-error">{{ error }}</p>
+            {% endfor %}
+
+            <label for="{{ form.password1.id_for_label }}">Password</label>
+            {{ form.password1 }}
+            {% for error in form.password1.errors %}
+                <p class="auth-error">{{ error }}</p>
+            {% endfor %}
+            <label for="{{ form.password2.id_for_label }}">Confirm password</label>
+            {{ form.password2 }}
+            {% for error in form.password2.errors %}
+                <p class="auth-error">{{ error }}</p>
+            {% endfor %}
+
+            {% if form.non_field_errors %}
+                {% for error in form.non_field_errors %}
+                    <p class="auth-error">{{ error }}</p>
+                {% endfor %}
+            {% endif %}
+
+            <button type="submit" class="btn btn-md">Sign up</button>
+        </form>
+        <p>Already have an account? <a href="{% url 'login' %}">Sign in</a></p>
+    </div>
+{% endblock %}

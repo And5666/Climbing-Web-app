@@ -1,0 +1,4 @@
+# Local dev/test extras on top of requirements.txt (install with
+# `pip install -r requirements-dev.txt`). Never needed in the container.
+-r requirements.txt
+weasyprint==70.0

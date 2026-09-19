@@ -1,0 +1,559 @@
+{% extends "climbs/base.html" %}
+{% load static %}
+
+{% block content %}
+    {% if has_sets %}<details id="set-switcher">
+        <summary><span class="set-tab-text">Sets</span></summary>
+        <div class="set-panel">
+            <p class="set-current">{% for w in walls %}{{ w.wall_display }}: {% if w.selected %}{{ w.selected.label }}{% else %}—{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+            <form method="get" action="{% url 'climbs:map' %}">
+                {% for w in walls %}
+                    <label>{{ w.wall_display }}
+                        <select name="{{ w.wall }}_set" onchange="this.form.submit()">
+                            {% for s in w.sets %}
+                                <option value="{{ s.id }}"{% if w.selected and s.id == w.selected.id %} selected{% endif %}>{{ s.label }}{% if w.active and s.id == w.active.id %} · current{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                {% endfor %}
+            </form>
+            <div class="marker-filter" role="group" aria-label="Show climbs">
+                <span class="marker-filter-label">Show</span>
+                <button type="button" data-marker-filter="all" aria-pressed="true">All</button>
+                <button type="button" data-marker-filter="sent" aria-pressed="false">Sent</button>
+                <button type="button" data-marker-filter="unsent" aria-pressed="false">Unsent</button>
+            </div>
+            {% if archived_any %}
+                <p class="muted">Viewing an archived set — logging, rating and voting are off. <a href="{% url 'climbs:map' %}">Back to current</a></p>
+            {% endif %}
+        </div>
+    </details>{% endif %}
+    <div id="map-viewport">
+        <div id="map-stack">
+            <div id="map-content">
+                <img src="{% static 'climbs/wall.svg' %}" id="wall-img" alt="Gym wall map">
+
+                <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
+                     xmlns="http://www.w3.org/2000/svg">
+                    {% for climb in climbs %}
+                        <g class="climb-marker" data-climb-id="{{ climb.id }}">
+                            <circle class="climb-hit" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="20"
+                                    fill="rgba(0,0,0,0)"/>
+                            <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
+                                    fill="{{ climb.colour }}" stroke="#ffffff" stroke-width="1.2"/>
+                            <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
+                                  text-anchor="middle" dominant-baseline="central"
+                                  fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.grade|default:"?" }}</text>
+                        </g>
+                    {% endfor %}
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <div id="climb-popup" aria-hidden="true">
+        <div class="sheet-scrim" data-close></div>
+        <section class="sheet" role="dialog" aria-modal="true" aria-label="Climb details">
+            <div class="grabber" id="sheet-grabber" title="Drag down to close">
+                <span class="grab-pill"></span>
+            </div>
+            <div id="sheet-body"></div>
+        </section>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="https://unpkg.com/panzoom@9.4.3/dist/panzoom.min.js"></script>
+    <script>
+        const stack = document.getElementById('map-stack');
+        // Pan/zoom is progressive enhancement: if the CDN is unreachable the
+        // markers and popup below must still work.
+        const pz = window.panzoom ? panzoom(stack, {
+            maxZoom: 8,
+            minZoom: 0.5,
+            smoothScroll: false,
+            bounds: true,
+            boundsPadding: 0.1,
+        }) : null;
+
+        // Markers deliberately shrink a little when zoomed out and grow
+        // slower than the zoom level otherwise, so a wall of ~50 climbs
+        // stays readable. The grade label scales in lockstep with the
+        // ring and is sized so the widest grade (V10) always sits
+        // inside it: white with a dark halo, legible on any tape
+        // colour in any theme. The invisible hit circle keeps a
+        // constant on-screen size so markers stay finger-tappable on
+        // phones at any zoom.
+        const BASE_R = 7, BASE_FONT = 7, BASE_STROKE = 1.2, HIT_R = 20;
+        function rescaleMarkers() {
+            const s = pz ? pz.getTransform().scale : 1;
+            const f = 1 / Math.pow(s, 0.55);
+            document.querySelectorAll('.climb-marker').forEach(m => {
+                const c = m.querySelector('.climb-dot');
+                if (c) {
+                    // Every dot shares one silhouette; sent or not, the
+                    // ring rides along so rescales never flatten it.
+                    c.setAttribute('r', (BASE_R * f).toFixed(2));
+                    c.setAttribute('stroke-width', (BASE_STROKE * f).toFixed(2));
+                }
+                const hit = m.querySelector('.climb-hit');
+                if (hit) hit.setAttribute('r', (HIT_R * f).toFixed(2));
+                const t = m.querySelector('text');
+                if (t) t.setAttribute('font-size', (BASE_FONT * f).toFixed(2));
+            });
+        }
+        if (pz) pz.on('transform', rescaleMarkers);
+        rescaleMarkers();
+
+        // A settled zoom can leave the markers looking soft until the
+        // next repaint — a small pan visibly "fixes" it, because only a
+        // new transform commits a fresh render of the zoom layer (a
+        // reflow read alone does not). Replay that cure automatically:
+        // snap the final translation to whole device pixels through
+        // panzoom itself. The shift is sub-pixel (invisible) and the
+        // fresh transform re-renders the layer crisply. Wheel/pinch
+        // fire no end event, so debounce the transform stream.
+        // Pure pans skip it (scale unchanged).
+        let settledScale = pz ? pz.getTransform().scale : 1;
+        let settleTimer = 0;
+        function sharpenAfterZoom() {
+            if (!pz) return;
+            clearTimeout(settleTimer);
+            settleTimer = setTimeout(() => {
+                const t = pz.getTransform();
+                if (t.scale === settledScale) return;
+                settledScale = t.scale;
+                const q = 1 / (window.devicePixelRatio || 1);
+                let x = Math.round(t.x / q) * q;
+                let y = Math.round(t.y / q) * q;
+                // Already pixel-aligned: nudge a hair so a fresh
+                // transform still commits. Far below visibility.
+                if (x === t.x && y === t.y) x += q / 64;
+                rescaleMarkers();
+                pz.moveTo(x, y);
+            }, 150);
+        }
+        if (pz) pz.on('transform', sharpenAfterZoom);
+
+        const popup = document.getElementById('climb-popup');
+        const sheetBody = document.getElementById('sheet-body');
+        const sheet = popup.querySelector('.sheet');
+        const GRADES = [{% for g in grade_choices %}"{{ g }}"{% if not forloop.last %}, {% endif %}{% endfor %}];
+        const AUTHED = {{ user.is_authenticated|yesno:"true,false" }};
+        let currentId = null;
+
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            return match ? match[2] : null;
+        }
+
+        async function api(url, method, body) {
+            const res = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+                body: body ? JSON.stringify(body) : undefined,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+            return data;
+        }
+
+        function esc(s) {
+            const d = document.createElement('div');
+            d.textContent = s ?? '';
+            return d.innerHTML;
+        }
+
+        // Read-only star display: dim row with a brass row clipped to
+        // the average, plus the average and rating count beside it.
+        function stars(avg, count) {
+            if (avg === null || avg === undefined)
+                return '<span class="muted">No ratings yet.</span>';
+            const pct = Math.max(0, Math.min(100, (avg / 5) * 100));
+            return '<span class="stars" role="img" aria-label="Rated ' + avg + ' out of 5">' +
+                '<span class="stars-bg">★★★★★</span>' +
+                '<span class="stars-fg" style="width:' + pct.toFixed(1) + '%">★★★★★</span></span>' +
+                ' <strong>' + avg + '</strong> <span class="muted">(' + count + ')</span>';
+        }
+
+        // Tag colours live on the climb, not the grade: a V3 can wear
+        // red or green depending on how it was set. Unknown tags fall
+        // back to rainbow; unparseable grades show '?'.
+        const TAG_VALUES = ['white', 'black', 'red', 'green', 'blue',
+            'yellow', 'orange', 'project', 'mystery'];
+        function climbTag(tag, grade) {
+            const label = /^V(\d+)$/.exec(grade || '') ? grade : '?';
+            const cls = 'tag-' + (TAG_VALUES.includes(tag) ? tag : 'mystery');
+            return {cls, label};
+        }
+
+        function triesWord(n) {
+            if (n <= 1) return 'Flash';
+            if (n === 2) return '2nd go';
+            if (n >= 5) return '5+';
+            return n + ' tries';
+        }
+
+        function triesText(n) {
+            if (n <= 1) return '1 try';
+            if (n >= 5) return '5+ tries';
+            return n + ' tries';
+        }
+
+        function renderPopup(data) {
+            const v = data.viewer || {};
+            const votes = data.grade_votes || {};
+
+            // Grade voting is three-way: the setter's grade stands, and
+            // voters just say harder or softer. Harder/softer post one
+            // grade above/below the set grade, which is all the
+            // harder/at/softer counts need.
+            const gi = Math.max(0, GRADES.indexOf(data.grade));
+            const giMine = GRADES.indexOf(v.my_grade);
+            const myDir = giMine < 0 ? null : (giMine > gi ? 'harder' : (giMine < gi ? 'softer' : 'at'));
+            const gradeBtns = [
+                {dir: 'softer', label: 'Softer'},
+                {dir: 'at', label: (data.grade || '?') + ' · proposed'},
+                {dir: 'harder', label: 'Harder'},
+            ].map(b =>
+                '<button class="chip' + (b.dir === 'at' ? ' set' : '') + (myDir === b.dir ? ' mine' : '') + '"' +
+                ' data-dir="' + b.dir + '" aria-pressed="' + (myDir === b.dir) + '">' + b.label + '</button>'
+            ).join('');
+
+            const ascents = (data.recent_ascents || []).map(a =>
+                '<li>' + esc(a.user) + ' — ' + triesText(a.tries) +
+                ' (' + a.points + ' pts)</li>'
+            ).join('') || '<li class="muted">Nobody has logged this one yet.</li>';
+
+            // Comments show the first 5 with a tap to reveal the rest.
+            const allComments = data.comments || [];
+            const commentHtml = (c) =>
+                '<div class="comment"><button class="user-chip" data-username="' + esc(c.user) + '" type="button"><strong>' + esc(c.user) + '</strong></button><p>' + esc(c.text) + '</p>' +
+                (c.mine ? '<button class="btn btn-sm btn-secondary" data-del-comment="' + c.id + '">Delete</button>' : '') +
+                '</div>';
+            const comments = allComments.slice(0, 5).map(commentHtml).join('') +
+                (allComments.length > 5 ?
+                    '<div class="extra-comments" hidden>' + allComments.slice(5).map(commentHtml).join('') + '</div>' +
+                    '<button class="btn btn-sm btn-secondary" id="p-more-comments">Show all ' + allComments.length + ' comments</button>'
+                    : '') ||
+                '<p class="muted">No comments yet.</p>';
+
+            // Logging an ascent is tap-only: a stepper picks the try count,
+            // one big button sends it. The comment box below is the only
+            // place on the sheet that needs the keyboard. Archived sets
+            // are frozen history: viewable, but nothing new can be
+            // logged, rated or voted on them.
+            const sendsBlock = `
+                <h4>Recent sends</h4>
+                <ul class="plain">${ascents}</ul>`;
+            const commentsBlock = (withForm) => `
+                <details class="comments-box">
+                    <summary>Comments (${allComments.length})</summary>
+                    <div class="comments-inner">
+                        <div id="p-comments">${comments}</div>
+                        ${withForm ? `
+                        <textarea id="p-comment" rows="2" maxlength="1000" placeholder="Beta, tips, encouragement…"></textarea>
+                        <button class="btn btn-md" id="p-send-comment">Post comment</button>` : ``}
+                    </div>
+                </details>`;
+            const interact = !AUTHED ? `
+                <hr>
+                <a class="btn btn-md btn-send" href="{% url "login" %}">Log in to log your send</a>
+                ${sendsBlock}
+                ${commentsBlock(false)}
+            ` : (data.archived ? `
+                <hr>
+                <p class="muted">Archived set — this climb's history is frozen: no logging, rating or voting.</p>
+                ${sendsBlock}
+                ${commentsBlock(false)}
+            ` : `
+                <hr>
+                <h4>Log your send</h4>
+                ${v.tries ? `
+                    <div class="logged">✓ Sent — logged in ${triesText(v.tries)}${v.points ? ' · ' + v.points + ' pts' : ''}.</div>
+                    <button class="btn btn-sm btn-secondary" id="p-undo-ascent">Undo send</button>
+                ` : `
+                    <div class="stepper">
+                        <button class="step-btn" id="t-minus" aria-label="One fewer try">−</button>
+                        <div class="step-val"><strong id="tries-val">1</strong><span id="tries-word">Flash</span></div>
+                        <button class="step-btn" id="t-plus" aria-label="One more try">+</button>
+                    </div>
+                    <button class="btn btn-md btn-send" id="p-send-ascent">Log send ✓</button>
+                    <p class="muted">Log it once you've sent it — first time on this one? Leave it on Flash.</p>
+                `}
+                <h4>Rate it</h4>
+                <div class="rate-row" id="p-stars" role="group" aria-label="Rate this climb">
+                    ${[1, 2, 3, 4, 5].map(n => {
+                        const lit = v.my_rating >= n;
+                        return '<button class="rate-star' + (lit ? ' lit' : '') + '" data-rate="' + n + '" aria-label="Rate ' + n + ' out of 5">' + (lit ? '★' : '☆') + '</button>';
+                    }).join('')}
+                </div>
+                <h4>What do you feel it is?</h4>
+                <div class="chips">${gradeBtns}</div>
+                <p class="muted">▲ ${votes.harder || 0} harder · ${votes.at || 0} at grade · ▼ ${votes.softer || 0} softer</p>
+                ${sendsBlock}
+                ${commentsBlock(true)}
+            `);
+
+            const tag = climbTag(data.tag, data.grade);
+            sheetBody.innerHTML = `
+                <div class="sheet-head">
+                    <span class="climb-dot" style="background:${esc(data.colour)}"></span>
+                    <div class="sheet-title">
+                        <h3>${esc(data.name) || esc(data.colour) || 'Unnamed climb'} <span class="grade-pill ${tag.cls}">${esc(tag.label)}</span></h3>
+                        <p class="wall-line">${esc(data.wall_display)}</p>
+                    </div>
+                    <button class="sheet-x" aria-label="Close">×</button>
+                </div>
+                <div class="sheet-stats">
+                    <div class="stat">${stars(data.rating_avg, data.rating_count)}</div>
+                    <div class="stat"><strong>${data.ascent_count}</strong> <span class="muted">sends</span></div>
+                </div>
+                ${interact}
+            `;
+            popup.classList.add('open');
+            popup.setAttribute('aria-hidden', 'false');
+            sheetBody.scrollTop = 0;
+            sheetBody.querySelector('.sheet-x').addEventListener('click', closePopup);
+            if (AUTHED) wirePopup(data.id, v.tries ?? 1, data.grade);
+            sheetBody.querySelectorAll('[data-del-comment]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    try {
+                        await api('/' + currentId + '/comments/' + btn.dataset.delComment + '/delete/', 'DELETE');
+                        refreshPopup();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            });
+        }
+
+        function wirePopup(id, initialTries, setGrade) {
+            // Stepper state lives in JS — there is no text field to type in.
+            // It tops out at 5+: anything higher scores the same.
+            const sendBtn = document.getElementById('p-send-ascent');
+            if (sendBtn) {
+                let tries = Math.min(5, Math.max(1, initialTries || 1));
+                const valEl = document.getElementById('tries-val');
+                const wordEl = document.getElementById('tries-word');
+                const paint = () => { valEl.textContent = tries >= 5 ? '5+' : tries; wordEl.textContent = triesWord(tries); };
+                document.getElementById('t-minus').addEventListener('click', () => {
+                    tries = Math.max(1, tries - 1);
+                    paint();
+                });
+                document.getElementById('t-plus').addEventListener('click', () => {
+                    tries = Math.min(5, tries + 1);
+                    paint();
+                });
+                paint();
+                sendBtn.addEventListener('click', async () => {
+                    try {
+                        await api('/' + id + '/ascent/', 'POST', {tries});
+                        // Reload so the marker grade turns green
+                        // immediately, everywhere.
+                        location.reload();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            }
+            const undoBtn = document.getElementById('p-undo-ascent');
+            if (undoBtn) {
+                undoBtn.addEventListener('click', async () => {
+                    try {
+                        await api('/' + id + '/ascent/', 'DELETE');
+                        location.reload();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            }
+            sheetBody.querySelectorAll('[data-rate]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    try {
+                        await api('/' + id + '/rate/', 'POST', {value: parseInt(btn.dataset.rate, 10)});
+                        refreshPopup();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            });
+            sheetBody.querySelectorAll('[data-dir]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    try {
+                        const dir = btn.dataset.dir;
+                        const gi = Math.max(0, GRADES.indexOf(setGrade));
+                        const target = dir === 'harder' ? GRADES[Math.min(GRADES.length - 1, gi + 1)]
+                            : dir === 'softer' ? GRADES[Math.max(0, gi - 1)]
+                            : GRADES[gi];
+                        await api('/' + id + '/grade/', 'POST', {suggested_grade: target});
+                        refreshPopup();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            });
+            const moreBtn = document.getElementById('p-more-comments');
+            if (moreBtn) {
+                moreBtn.addEventListener('click', () => {
+                    const extra = sheetBody.querySelector('.extra-comments');
+                    const showing = extra.hasAttribute('hidden');
+                    if (showing) {
+                        extra.removeAttribute('hidden');
+                        moreBtn.textContent = 'Show fewer comments';
+                    } else {
+                        extra.setAttribute('hidden', '');
+                        moreBtn.textContent = 'Show all ' + (5 + extra.querySelectorAll('.comment').length) + ' comments';
+                    }
+                });
+            }
+            const commentBtn = document.getElementById('p-send-comment');
+            if (commentBtn) {
+                commentBtn.addEventListener('click', async () => {
+                    try {
+                        const text = document.getElementById('p-comment').value.trim();
+                        if (!text) return;
+                        await api('/' + id + '/comments/', 'POST', {text});
+                        refreshPopup();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            }
+        }
+
+        function closePopup() {
+            popup.classList.remove('open');
+            popup.setAttribute('aria-hidden', 'true');
+            sheetBody.innerHTML = '';
+            currentId = null;
+        }
+
+        // Easy off: tap the dimmed area, hit Escape, or drag the sheet down.
+        popup.querySelector('[data-close]').addEventListener('click', closePopup);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && currentId) closePopup();
+        });
+        (() => {
+            const grip = document.getElementById('sheet-grabber');
+            let startY = null, dy = 0;
+            grip.addEventListener('touchstart', (e) => {
+                startY = e.touches[0].clientY;
+                dy = 0;
+                sheet.style.transition = 'none';
+            }, {passive: true});
+            grip.addEventListener('touchmove', (e) => {
+                if (startY === null) return;
+                dy = Math.max(0, e.touches[0].clientY - startY);
+                sheet.style.transform = 'translateY(' + dy + 'px)';
+            }, {passive: true});
+            grip.addEventListener('touchend', () => {
+                sheet.style.transition = '';
+                sheet.style.transform = '';
+                if (dy > 90) closePopup();
+                startY = null;
+                dy = 0;
+            });
+        })();
+
+        async function refreshPopup() {
+            if (!currentId) return;
+            try {
+                renderPopup(await api('/' + currentId + '/', 'GET'));
+            } catch (e) {
+                alert(e.message);
+            }
+        }
+
+        // Tapping back onto the map dismisses the open Sets panel,
+        // so it never needs a manual close. The summary toggle that
+        // opens it sits outside the viewport, so it can't trip this.
+        (() => {
+            const switcher = document.getElementById('set-switcher');
+            const viewport = document.getElementById('map-viewport');
+            if (!switcher || !viewport) return;
+            viewport.addEventListener('pointerdown', () => {
+                switcher.open = false;
+            });
+        })();
+
+        // Sent/unsent filter: one tap in the Sets panel hides the
+        // markers you don't want. The choice sticks on this device,
+        // so it survives the reload after logging a send.
+        const SENT_IDS = new Set([{% for id in sent_ids %}{{ id }}{% if not forloop.last %}, {% endif %}{% endfor %}]);
+        const FILTER_KEY = 'summit-filter';
+        let markerFilter = 'all';
+        try {
+            const saved = localStorage.getItem(FILTER_KEY);
+            if (['all', 'sent', 'unsent'].includes(saved)) markerFilter = saved;
+        } catch (e) { /* private mode: stay on all */ }
+        function applyMarkerFilter() {
+            document.querySelectorAll('.climb-marker').forEach(m => {
+                const sent = SENT_IDS.has(parseInt(m.dataset.climbId, 10));
+                const show = markerFilter === 'all' || (markerFilter === 'sent') === sent;
+                m.style.display = show ? '' : 'none';
+            });
+            document.querySelectorAll('[data-marker-filter]').forEach(b => {
+                b.setAttribute('aria-pressed',
+                    b.dataset.markerFilter === markerFilter ? 'true' : 'false');
+            });
+            try {
+                localStorage.setItem(FILTER_KEY, markerFilter);
+            } catch (e) { /* private mode: filter lasts the visit */ }
+        }
+        document.querySelectorAll('[data-marker-filter]').forEach(b => {
+            b.addEventListener('click', () => {
+                markerFilter = b.dataset.markerFilter;
+                applyMarkerFilter();
+            });
+        });
+        applyMarkerFilter();
+
+        // Deep link from the leaderboard stats: ?climb=<id> centers
+        // that marker (via its real on-screen box, so all transforms
+        // and letterboxing are accounted for) and opens its sheet.
+        (() => {
+            const m = /[?&]climb=(\d+)/.exec(location.search);
+            if (!m) return;
+            const marker = document.querySelector(
+                '.climb-marker[data-climb-id="' + m[1] + '"]');
+            if (!marker) return;
+            if (marker.style.display === 'none') {
+                markerFilter = 'all';
+                applyMarkerFilter();
+            }
+            if (pz) {
+                const r = marker.getBoundingClientRect();
+                const vp = document.getElementById('map-viewport').getBoundingClientRect();
+                const t = pz.getTransform();
+                pz.moveTo(t.x + (vp.left + vp.width / 2) - (r.left + r.width / 2),
+                          t.y + (vp.top + vp.height / 2) - (r.top + r.height / 2));
+            }
+            currentId = marker.dataset.climbId;
+            refreshPopup();
+        })();
+
+        // Tap detection on pointerup, not click: mobile browsers and the
+        // pan/zoom layer can swallow click events after touch gestures,
+        // while pointerup reliably fires. Drags (moved far / held long)
+        // still pan the map instead of opening the sheet.
+        document.querySelectorAll('.climb-marker').forEach(marker => {
+            let down = null;
+            marker.addEventListener('pointerdown', (e) => {
+                down = {x: e.clientX, y: e.clientY, t: Date.now()};
+            });
+            marker.addEventListener('pointerup', async (e) => {
+                if (!down) return;
+                const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+                const held = Date.now() - down.t;
+                down = null;
+                if (moved > 12 || held > 600) return;
+                currentId = marker.dataset.climbId;
+                await refreshPopup();
+            });
+            marker.addEventListener('pointercancel', () => {
+                down = null;
+            });
+        });
+    </script>
+{% endblock %}

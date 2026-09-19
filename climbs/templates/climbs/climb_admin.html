@@ -1,0 +1,515 @@
+{% extends "climbs/base.html" %}
+{% load static %}
+
+{% block title %}Admin · Climbs{% endblock %}
+
+{% block content %}
+<div class="admin-topbar">
+    <a href="{% url 'climbs:climb-admin' %}?wall={{ wall }}{% if selected %}&set={{ selected.id }}{% endif %}" class="on">Climb edit</a>
+    <a href="{% url 'climbs:board-admin' %}?wall={{ wall }}{% if selected %}&set={{ selected.id }}{% endif %}">Leaderboards</a>
+</div>
+<div class="admin-layout">
+    <aside class="inspector">
+        <form method="get" action="{% url 'climbs:climb-admin' %}" class="insp-wall">
+            {% for w in walls %}
+                <button type="submit" name="wall" value="{{ w.wall }}" class="{% if w.wall == wall %}on{% endif %}">{{ w.display }}</button>
+            {% endfor %}
+        </form>
+        {% if tree %}
+            {% for node in tree %}
+                <details class="insp-set"{% if selected and node.set.id == selected.id %} open{% endif %}>
+                    <summary>
+                        <form method="get" action="{% url 'climbs:climb-admin' %}" class="insp-set-pick">
+                            <input type="hidden" name="wall" value="{{ wall }}">
+                            <button type="submit" name="set" value="{{ node.set.id }}" title="View this set">{{ node.set.label }}</button>
+                        </form>
+                        {% if active and node.set.id == active.id %}<span class="insp-live">live</span>{% endif %}
+                        <span class="insp-date">{{ node.set.created_at|date:"j M Y" }}</span>
+                        <span class="insp-count">{{ node.climbs|length }}</span>
+                    </summary>
+                    <div class="insp-set-actions">
+                        <button class="btn btn-sm" data-add-climb="{{ node.set.id }}" data-wall="{{ wall }}" type="button">+ Add climb</button>
+                        <button class="btn btn-sm btn-secondary" data-rename-set="{{ node.set.id }}" data-label="{{ node.set.label|escapejs }}" type="button">Rename</button>
+                        {% if not active or node.set.id != active.id %}
+                            <button class="btn btn-sm btn-secondary" data-activate-set="{{ node.set.id }}" type="button">Make current</button>
+                        {% endif %}
+                        <button class="btn btn-sm btn-secondary" data-delete-set="{{ node.set.id }}" type="button">Delete</button>
+                    </div>
+                    <ul class="insp-files">
+                        {% for c in node.climbs %}
+                            <li>
+                                <button class="insp-file" data-edit-climb data-id="{{ c.id }}"
+                                        data-name="{{ c.name }}" data-grade="{{ c.grade }}"
+                                        data-tag="{{ c.tag }}" data-colour="{{ c.colour }}"
+                                        data-wall="{{ c.wall }}" data-active="{% if c.is_active %}1{% else %}0{% endif %}"
+                                        data-x="{{ c.x_percent }}" data-y="{{ c.y_percent }}" type="button">
+                                    <span class="grade-pill {{ c.tag_class }}">{{ c.grade }}</span>
+                                    <span class="insp-file-name">{{ c.name|default:c.colour }}</span>
+                                </button>
+                                <button class="insp-del" data-del-climb="{{ c.id }}" aria-label="Delete climb" type="button">×</button>
+                            </li>
+                        {% empty %}
+                            <li class="muted">No climbs yet.</li>
+                        {% endfor %}
+                    </ul>
+                </details>
+            {% endfor %}
+        {% else %}
+            <p class="muted">No sets — create one.</p>
+        {% endif %}
+        <button class="btn btn-sm btn-secondary" data-new-set="{{ wall }}" type="button">+ New set</button>
+    </aside>
+    <div class="admin-main">
+        <p id="place-hint" class="muted" hidden>Placing a new climb — click the wall where it goes. <button id="place-cancel" type="button">Cancel</button></p>
+        <div id="map-viewport">
+            <div id="map-stack">
+                <div id="map-content">
+                    <img src="{% static 'climbs/wall.svg' %}" id="wall-img" alt="Gym wall map">
+                    <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
+                         xmlns="http://www.w3.org/2000/svg">
+                        {% for climb in climbs %}
+                            <g class="climb-marker" data-id="{{ climb.id }}"
+                                    data-name="{{ climb.name }}" data-grade="{{ climb.grade }}"
+                                    data-tag="{{ climb.tag }}" data-active="{% if climb.is_active %}1{% else %}0{% endif %}"
+                                    data-colour="{{ climb.colour }}" data-wall="{{ climb.wall }}">
+                                <circle cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
+                                        fill="{{ climb.colour }}" stroke="#fff" stroke-width="1.2"{% if not climb.is_active %} opacity="0.45"{% endif %}/>
+                                <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
+                                      text-anchor="middle" dominant-baseline="central" pointer-events="none"
+                                      fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.grade|default:"?" }}</text>
+                            </g>
+                        {% endfor %}
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="climb-edit-panel" class="auth-form" style="display:none; position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); z-index:200;">
+    <h2 id="panel-title">New climb</h2>
+    <label>Name (optional)</label>
+    <input type="text" id="f-name">
+    <label>Proposed grade</label>
+    <select id="f-grade">
+        {% for g in grade_choices %}
+            <option value="{{ g }}">{{ g }}</option>
+        {% endfor %}
+    </select>
+    <label>Tag</label>
+    <select id="f-tag">
+        {% for slug, label in tag_choices %}
+            <option value="{{ slug }}">{{ label }}</option>
+        {% endfor %}
+    </select>
+    <label>Hold colour</label>
+    <div id="f-swatches"></div>
+    <div class="colour-custom"><input type="color" id="f-picker" value="#ff0000" aria-label="Custom hold colour"><span>Custom</span></div>
+    <input type="hidden" id="f-colour">
+    <label>Wall</label>
+    <select id="f-wall">
+        {% for wall_value, display in wall_choices %}
+            <option value="{{ wall_value }}">{{ display }}</option>
+        {% endfor %}
+    </select>
+    <label><input type="checkbox" id="f-active" checked> Active (shows on the map)</label>
+    <button class="btn btn-md" id="f-save">Save</button>
+    <button class="btn btn-sm btn-secondary" id="f-delete" style="display:none;">Delete</button>
+    <button class="btn btn-sm btn-secondary" id="f-cancel">Cancel</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/panzoom@9.4.3/dist/panzoom.min.js"></script>
+<script>
+const svg = document.getElementById('climb-layer');
+const stack = document.getElementById('map-stack');
+// Zoom (wheel/pinch) is progressive enhancement: if the CDN is
+// unreachable the markers and edit panel below must still work.
+const pz = window.panzoom ? panzoom(stack, {
+    maxZoom: 8,
+    minZoom: 0.5,
+    smoothScroll: false,
+    bounds: true,
+    boundsPadding: 0.1,
+}) : null;
+
+// Markers hold a steady on-screen size while zoomed (same softer
+// counter-scale as the public map) so a wall of climbs stays
+// readable and draggable at any zoom.
+const BASE_R = 7, BASE_FONT = 7, BASE_STROKE = 1.2;
+function rescaleMarkers() {
+    const s = pz ? pz.getTransform().scale : 1;
+    const f = 1 / Math.pow(s, 0.55);
+    document.querySelectorAll('.climb-marker').forEach(m => {
+        const c = m.querySelector('circle');
+        if (c) {
+            c.setAttribute('r', (BASE_R * f).toFixed(2));
+            c.setAttribute('stroke-width', (BASE_STROKE * f).toFixed(2));
+        }
+        const t = m.querySelector('text');
+        if (t) t.setAttribute('font-size', (BASE_FONT * f).toFixed(2));
+    });
+}
+if (pz) pz.on('transform', rescaleMarkers);
+rescaleMarkers();
+
+const panel = document.getElementById('climb-edit-panel');
+const placeHint = document.getElementById('place-hint');
+const INSPECTOR_WALL = "{{ wall }}";
+const SELECTED_SET_ID = {% if selected %}{{ selected.id }}{% else %}null{% endif %};
+let activeId = null;
+let pendingCoords = null;
+let pendingSet = null;
+let armedSet = null;
+let armedBtn = null;
+
+function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : null;
+}
+
+async function api(url, method, body) {
+    const res = await fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+    return data;
+}
+
+function svgPoint(evt) {
+    const pt = svg.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+// The grade picks the tag shortlist: each grade allows its own band
+// plus the next one up (a V5 wears blue or yellow, never green).
+// The ends of the scale narrow to one: V0 is always white, V7 is
+// always orange, and project starts at V8.
+const TAG_BY_GRADE = {0: ['white'], 1: ['white', 'black'],
+    2: ['red', 'green'], 3: ['red', 'green'], 4: ['green', 'blue'],
+    5: ['blue', 'yellow'], 6: ['yellow', 'orange'],
+    7: ['orange'], 8: ['project'], 9: ['project'],
+    10: ['project']};
+const TAG_LABELS = {};
+document.querySelectorAll('#f-tag option').forEach(o => TAG_LABELS[o.value] = o.textContent);
+
+function allowedTags(grade) {
+    const m = /^V(\d+)$/.exec(grade || '');
+    const n = m ? parseInt(m[1], 10) : NaN;
+    return TAG_BY_GRADE[n] || ['mystery'];
+}
+
+function setTagOptions(grade, prefer) {
+    const allowed = allowedTags(grade);
+    const sel = document.getElementById('f-tag');
+    sel.innerHTML = '';
+    allowed.forEach(t => {
+        const o = document.createElement('option');
+        o.value = t;
+        o.textContent = TAG_LABELS[t] || t;
+        sel.appendChild(o);
+    });
+    sel.value = allowed.includes(prefer) ? prefer : allowed[0];
+}
+
+// Hold colours: tap a swatch or pick anything custom. The stored
+// value stays a plain CSS colour, same as before.
+const HOLD_COLOURS = ['red', 'blue', 'yellow', 'green', 'purple',
+    'orange', 'pink', 'white', 'black', 'lime', 'teal', 'cyan',
+    'magenta', 'brown', 'grey', 'navy', 'maroon', 'coral'];
+
+function toHex(name) {
+    try {
+        const el = document.createElement('span');
+        el.style.color = name;
+        document.body.appendChild(el);
+        const m = getComputedStyle(el).color.match(/\d+/g);
+        el.remove();
+        if (!m) return null;
+        return '#' + m.slice(0, 3).map(n => (+n).toString(16).padStart(2, '0')).join('');
+    } catch (e) {
+        return null;
+    }
+}
+
+function renderSwatches(current) {
+    const box = document.getElementById('f-swatches');
+    box.innerHTML = '';
+    HOLD_COLOURS.forEach(c => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'swatch' + (c.toLowerCase() === String(current).toLowerCase() ? ' sel' : '');
+        b.style.background = c;
+        b.dataset.colour = c;
+        b.setAttribute('aria-label', c);
+        b.addEventListener('click', () => setColour(c));
+        box.appendChild(b);
+    });
+    setColour(current || 'red');
+}
+
+function setColour(c) {
+    document.getElementById('f-colour').value = c;
+    const picker = document.getElementById('f-picker');
+    picker.value = toHex(c) || picker.value;
+    document.querySelectorAll('#f-swatches .swatch').forEach(b => {
+        b.classList.toggle('sel', b.dataset.colour.toLowerCase() === String(c).toLowerCase());
+    });
+}
+
+document.getElementById('f-picker').addEventListener('input', (e) => {
+    setColour(e.target.value);
+});
+
+document.getElementById('f-grade').addEventListener('change', (e) => {
+    setTagOptions(e.target.value,
+        document.getElementById('f-tag').value);
+});
+
+function openPanel(id, x, y, climb = {}) {
+    activeId = id;
+    pendingCoords = { x_percent: x, y_percent: y };
+    document.getElementById('panel-title').textContent = id ? "Edit climb" : "New climb";
+    document.getElementById('f-name').value = climb.name || "";
+    document.getElementById('f-grade').value = climb.grade || "V0";
+    setTagOptions(document.getElementById('f-grade').value, climb.tag || "");
+    renderSwatches(climb.colour || "red");
+    document.getElementById('f-wall').value = climb.wall || INSPECTOR_WALL;
+    document.getElementById('f-active').checked = !id || climb.active !== "0";
+    document.getElementById('f-delete').style.display = id ? "inline-flex" : "none";
+    panel.style.display = "block";
+}
+
+function closePanel() {
+    panel.style.display = "none";
+    activeId = null;
+    pendingCoords = null;
+    pendingSet = null;
+}
+
+// Arming: "Add climb" sticks a pointer to the cursor; the next wall
+// click places the climb straight into that set.
+function disarm() {
+    armedSet = null;
+    if (armedBtn) {
+        armedBtn.classList.remove('armed');
+        armedBtn = null;
+    }
+    svg.style.cursor = '';
+    placeHint.hidden = true;
+}
+
+document.querySelectorAll('[data-add-climb]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        disarm();
+        armedSet = btn.dataset.addClimb;
+        armedBtn = btn;
+        btn.classList.add('armed');
+        svg.style.cursor = 'crosshair';
+        placeHint.hidden = false;
+        // Bring the map into view: on phones the inspector sits
+        // above it, and arming is pointless if you can't see the wall.
+        document.getElementById('map-viewport').scrollIntoView({block: 'nearest'});
+    });
+});
+
+document.getElementById('place-cancel').addEventListener('click', disarm);
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') disarm();
+});
+
+// Click empty map area = place (when armed) or a free new climb.
+// A pan/drag that ends on the wall is not a placement: ignore
+// clicks whose pointer travelled since pointerdown.
+let wallDown = null;
+svg.addEventListener('pointerdown', (e) => {
+    wallDown = {x: e.clientX, y: e.clientY};
+});
+svg.addEventListener('click', (e) => {
+    if (e.target.tagName === 'circle') return;
+    if (wallDown && Math.hypot(e.clientX - wallDown.x, e.clientY - wallDown.y) > 8) {
+        wallDown = null;
+        return;
+    }
+    wallDown = null;
+    const p = svgPoint(e);
+    if (armedSet) {
+        pendingSet = armedSet;
+        openPanel(null, p.x, p.y, {wall: INSPECTOR_WALL});
+        disarm();
+    } else {
+        openPanel(null, p.x, p.y, {wall: INSPECTOR_WALL});
+    }
+});
+
+// Click existing marker = edit; drag = fine repositioning.
+// Pointer events cover mouse and touch. Past a small threshold the
+// drag pauses the pan/zoom layer so the marker moves instead of
+// the map; a plain tap still opens the edit panel.
+document.querySelectorAll('.climb-marker').forEach(setupMarker);
+
+function setupMarker(marker) {
+    const circle = marker.querySelector('circle');
+    const label = marker.querySelector('text');
+
+    marker.addEventListener('pointerdown', (e) => {
+        const startX = e.clientX, startY = e.clientY;
+        let dragging = false;
+        let paused = false;
+        const move = (moveEvt) => {
+            if (!dragging && Math.hypot(moveEvt.clientX - startX, moveEvt.clientY - startY) < 4) return;
+            dragging = true;
+            if (pz && !paused && pz.pause) {
+                pz.pause();
+                paused = true;
+            }
+            const p = svgPoint(moveEvt);
+            // Move the ring and its grade label together, or the label
+            // lies about where the climb was saved.
+            circle.setAttribute('cx', p.x);
+            circle.setAttribute('cy', p.y);
+            if (label) {
+                label.setAttribute('x', p.x);
+                label.setAttribute('y', p.y);
+            }
+        };
+        const cancel = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', cancel);
+            if (paused && pz && pz.resume) pz.resume();
+        };
+        const up = (upEvt) => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+            window.removeEventListener('pointercancel', cancel);
+            if (paused && pz && pz.resume) pz.resume();
+            const id = marker.dataset.id;
+            const x = parseFloat(circle.getAttribute('cx'));
+            const y = parseFloat(circle.getAttribute('cy'));
+            if (dragging) {
+                api(`/admin-tools/climbs/${id}/update/`, 'POST', { x_percent: x, y_percent: y })
+                    .catch(err => alert(err.message));
+            } else {
+                openPanel(id, x, y, marker.dataset);
+            }
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', cancel);
+    });
+}
+
+// Inspector file rows: open the same edit panel, or delete in place.
+document.querySelectorAll('[data-edit-climb]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        openPanel(btn.dataset.id, parseFloat(btn.dataset.x),
+                  parseFloat(btn.dataset.y), btn.dataset);
+    });
+});
+
+document.querySelectorAll('[data-del-climb]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Delete this climb? Its sends, ratings, votes and comments go too. This cannot be undone.')) return;
+        try {
+            await api(`/admin-tools/climbs/${btn.dataset.delClimb}/delete/`, 'POST');
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+
+document.getElementById('f-cancel').addEventListener('click', closePanel);
+
+document.getElementById('f-save').addEventListener('click', async () => {
+    const payload = {
+        name: document.getElementById('f-name').value,
+        grade: document.getElementById('f-grade').value,
+        tag: document.getElementById('f-tag').value,
+        colour: document.getElementById('f-colour').value,
+        wall: document.getElementById('f-wall').value,
+        is_active: document.getElementById('f-active').checked,
+        x_percent: pendingCoords.x_percent,
+        y_percent: pendingCoords.y_percent,
+    };
+    // Armed placements name their set; anything else lands in the set
+    // being viewed — never silently in the live set.
+    if (pendingSet) payload.climb_set = pendingSet;
+    else if (SELECTED_SET_ID) payload.climb_set = SELECTED_SET_ID;
+    try {
+        const url = activeId ? `/admin-tools/climbs/${activeId}/update/` : `/admin-tools/climbs/create/`;
+        await api(url, 'POST', payload);
+        location.reload();
+    } catch (err) {
+        alert(err.message);
+    }
+});
+
+document.getElementById('f-delete').addEventListener('click', async () => {
+    if (!activeId) return;
+    if (!confirm('Delete this climb? Its sends, ratings, votes and comments go too. This cannot be undone.')) return;
+    try {
+        await api(`/admin-tools/climbs/${activeId}/delete/`, 'POST');
+        location.reload();
+    } catch (err) {
+        alert(err.message);
+    }
+});
+
+document.querySelectorAll('[data-new-set]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Start a new set? It drafts quietly until you make it current.')) return;
+        try {
+            const res = await api('/admin-tools/sets/start/', 'POST', {wall: btn.dataset.newSet});
+            location.href = "{% url 'climbs:climb-admin' %}?wall=" + btn.dataset.newSet + "&set=" + res.id;
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+
+document.querySelectorAll('[data-rename-set]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const label = prompt('Set name:', btn.dataset.label || '');
+        if (!label || !label.trim()) return;
+        try {
+            await api(`/admin-tools/sets/${btn.dataset.renameSet}/update/`, 'POST', {label: label.trim()});
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+
+document.querySelectorAll('[data-activate-set]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Make this the live set? Its climbs go live; the current live set and its climbs go quiet.')) return;
+        try {
+            await api(`/admin-tools/sets/${btn.dataset.activateSet}/activate/`, 'POST');
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+
+document.querySelectorAll('[data-delete-set]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Delete this set and ALL its climbs, sends and ratings? This cannot be undone.')) return;
+        try {
+            await api(`/admin-tools/sets/${btn.dataset.deleteSet}/delete/`, 'POST');
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+</script>
+{% endblock %}

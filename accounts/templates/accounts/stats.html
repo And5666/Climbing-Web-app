@@ -1,0 +1,117 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}My stats{% endblock %}
+
+{% block content %}
+<div class="narrow">
+    <section class="card">
+        <div class="profile-head">
+            {% if user.avatar %}
+                <img src="{{ user.avatar.url }}" alt="Your profile picture" class="avatar-lg">
+            {% else %}
+                <span class="avatar-lg avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>
+            {% endif %}
+            <div>
+                <h2>{{ user.username }}</h2>
+                <p class="muted">{{ user.email }} · since {{ user.date_joined|date:"d/m/Y" }}</p>
+            </div>
+        </div>
+        <div class="profile-stats">
+            <div><span class="stat-num">{{ total_sends }}</span><span class="stat-label">sends</span></div>
+            <div><span class="stat-num">{{ total_points }}</span><span class="stat-label">pts</span></div>
+            <div><span class="stat-num">{{ best_grade }}</span><span class="stat-label">best</span></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <h3>Progress</h3>
+        <form method="get" action="{% url 'accounts:stats' %}" class="stats-controls">
+            <label>Graph
+                <select name="metric" onchange="this.form.submit()">
+                    {% for value, label in metric_choices %}
+                        <option value="{{ value }}"{% if value == metric %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Wall
+                <select name="wall" onchange="this.form.submit()">
+                    {% for value, label in wall_choices %}
+                        <option value="{{ value }}"{% if value == wall %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>Range
+                <select name="range" onchange="this.form.submit()">
+                    {% for value, label in range_choices %}
+                        <option value="{{ value }}"{% if value == span %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        </form>
+        {% if months %}
+            <div class="progress-graph" role="img" aria-label="Monthly training stats">
+                {% for month in months %}
+                    <div class="progress-col" title="{{ month.label }} · {{ month.display }} · {{ month.sends }} send{{ month.sends|pluralize }}">
+                        <span class="progress-grade">{{ month.display }}</span>
+                        <span class="progress-track"><span class="progress-bar" style="height:{{ month.pct }}%"></span></span>
+                        <span class="progress-month">{{ month.label }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="muted">Nothing here for these filters — log a send and it shows up.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h3>Sends by grade</h3>
+        {% if distribution %}
+            <div class="graph">
+                {% for row in distribution %}
+                    <div class="graph-row">
+                        <span class="graph-grade">{{ row.grade }}</span>
+                        <span class="graph-track"><span class="gbar" style="width:{{ row.pct }}%;background:var(--accent)"></span></span>
+                        <span class="graph-count">{{ row.sends }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="muted">No sends on this wall yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h3>Leaderboard</h3>
+        {% if rank_lines %}
+            <ul class="plain rank-list">
+                {% for display, rank in rank_lines %}
+                    <li><span>{{ display }}</span>
+                        {% if rank.position %}
+                            <span class="rank-score">#{{ rank.position }} of {{ rank.of }} · {{ rank.points }} pts</span>
+                        {% else %}
+                            <span class="muted">unranked</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="muted">No boards yet — log a send to join.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h3>Recent sends</h3>
+        {% if recent %}
+            <ul class="plain rank-list">
+                {% for ascent in recent %}
+                    <li><span><span class="grade-pill {{ ascent.climb.tag_class }}">{{ ascent.climb.grade }}</span>
+                        {{ ascent.climb.name|default:ascent.climb.colour }} · {{ ascent.climb.get_wall_display }}</span>
+                        <span class="muted">{{ ascent.logged_at|date:"d/m/Y" }}</span></li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="muted">Nothing logged yet.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

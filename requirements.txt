@@ -1,0 +1,5 @@
+# Production dependencies. Versions pinned to what the app is
+# developed and tested against; refresh deliberately, not by accident.
+Django==6.1.1
+gunicorn==26.2.0
+whitenoise==6.12.0

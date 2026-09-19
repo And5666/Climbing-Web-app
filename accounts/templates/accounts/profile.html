@@ -1,0 +1,203 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}Profile{% endblock %}
+
+{% block content %}
+<div class="narrow">
+    <section class="card">
+        <div class="profile-head">
+            {% if user.avatar %}
+                <img src="{{ user.avatar.url }}" alt="Your profile picture" class="avatar-lg">
+            {% else %}
+                <span class="avatar-lg avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>
+            {% endif %}
+            <div>
+                <h2>{{ user.username }}</h2>
+                <p class="muted">{{ user.email }} · since {{ user.date_joined|date:"M Y" }}</p>
+            </div>
+        </div>
+        <div class="profile-stats">
+            <div><span class="stat-num">{{ total_sends }}</span><span class="stat-label">sends</span></div>
+            <div><span class="stat-num">{{ total_points }}</span><span class="stat-label">pts</span></div>
+        </div>
+        <p class="stats-link"><a class="btn btn-md btn-secondary" href="{% url 'accounts:stats' %}">Full stats</a></p>
+    </section>
+
+    <section class="card">
+        <h3>Leaderboard</h3>
+        {% if rank_lines %}
+            <ul class="plain rank-list">
+                {% for display, rank in rank_lines %}
+                    <li><span>{{ display }}</span>
+                        {% if rank.position %}
+                            <span class="rank-score">#{{ rank.position }} of {{ rank.of }} · {{ rank.points }} pts</span>
+                        {% else %}
+                            <span class="muted">unranked</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="muted">No boards yet — log a send to join.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h3>Display</h3>
+        <p class="muted">Theme applies instantly and is saved on this device.</p>
+        <div class="theme-toggle" role="group" aria-label="Colour theme">
+            <button type="button" class="btn btn-md theme-btn" data-theme-set="abyss" aria-pressed="true">Abyss</button>
+            <button type="button" class="btn btn-md theme-btn" data-theme-set="blueprint" aria-pressed="false">Blueprint</button>
+            <button type="button" class="btn btn-md theme-btn" data-theme-set="ember" aria-pressed="false">Ember</button>
+            <button type="button" class="btn btn-md theme-btn" data-theme-set="forest" aria-pressed="false">Forest</button>
+            <button type="button" class="btn btn-md theme-btn" data-theme-set="clay" aria-pressed="false">Clay</button>
+        </div>
+    </section>
+
+    <section class="card">
+        <h3>Profile</h3>
+        <form method="post" action="{% url 'accounts:profile-update' %}" enctype="multipart/form-data" id="profile-form">
+            {% csrf_token %}
+            <label for="id_username">Username</label>
+            {{ profile_form.username }}
+            <label for="id_avatar">Profile picture</label>
+            <div class="avatar-pick-row">
+                <label class="btn btn-md btn-secondary avatar-pick" for="id_avatar">Choose picture</label>
+                {{ profile_form.avatar }}
+                {{ profile_form.remove_avatar }}
+                <button type="button" class="btn btn-md btn-secondary avatar-unpick" id="avatar-remove"{% if user.avatar %} data-stored="1"{% else %} hidden{% endif %}>Remove photo</button>
+            </div>
+            <p class="muted" id="avatar-note">Square JPG, PNG or GIF — shrunk to 256px on your phone before upload.</p>
+            <button class="btn btn-md" type="submit">Save profile</button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h3>Change password</h3>
+        <form method="post" action="{% url 'accounts:password-change' %}">
+            {% csrf_token %}
+            <label for="id_old_password">Current password</label>
+            {{ password_form.old_password }}
+            <label for="id_new_password1">New password</label>
+            {{ password_form.new_password1 }}
+            <label for="id_new_password2">Confirm new password</label>
+            {{ password_form.new_password2 }}
+            <button class="btn btn-md" type="submit">Change password</button>
+        </form>
+    </section>
+
+    <section class="card danger">
+        <h3>Delete account</h3>
+        <p class="muted">Removes your profile, sends, ratings and comments. This can't be undone.</p>
+        <form method="post" action="{% url 'accounts:account-delete' %}">
+            {% csrf_token %}
+            <label for="id_password">Current password</label>
+            {{ delete_form.password }}
+            <label class="check">{{ delete_form.confirm }} {{ delete_form.confirm.label }}</label>
+            <button class="btn btn-md btn-danger" type="submit">Delete my account</button>
+        </form>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Theme switch: attribute on <html> + localStorage, no reload needed.
+    document.querySelectorAll('[data-theme-set]').forEach((btn) => {
+        const paint = () => btn.setAttribute(
+            'aria-pressed',
+            document.documentElement.dataset.theme === btn.dataset.themeSet);
+        btn.addEventListener('click', () => {
+            document.documentElement.dataset.theme = btn.dataset.themeSet;
+            try {
+                localStorage.setItem('summit-theme', btn.dataset.themeSet);
+            } catch (e) { /* private mode: theme lasts this visit */ }
+            document.querySelectorAll('[data-theme-set]').forEach((other) =>
+                other.setAttribute('aria-pressed',
+                    other.dataset.themeSet === btn.dataset.themeSet));
+        });
+        paint();
+    });
+</script>
+<script>
+    // Downscale the avatar on the phone (max 256px JPEG) so uploads stay
+    // tiny and the server never has to process images.
+    const input = document.getElementById('id_avatar');
+    const note = document.getElementById('avatar-note');
+    const pickLabel = document.querySelector('.avatar-pick');
+    const removeBtn = document.getElementById('avatar-remove');
+    const removeFlag = document.getElementById('id_remove_avatar');
+    const pickText = pickLabel ? pickLabel.textContent : 'Choose picture';
+    const noteText = note ? note.textContent : '';
+    const stored = !!(removeBtn && removeBtn.dataset.stored);
+    function paintAvatar() {
+        if (!input) return;
+        // One button covers both jobs: it shows while there is
+        // anything to remove (a stored photo, or a file picked but
+        // not yet saved), and toggles to "Keep photo" once removal
+        // is armed.
+        const picked = !!(input.files && input.files.length);
+        const armed = !!(removeFlag && removeFlag.value === 'true');
+        if (removeBtn) {
+            removeBtn.hidden = !(picked || stored || armed);
+            removeBtn.textContent = armed ? 'Keep photo' : 'Remove photo';
+        }
+        if (note && !picked) {
+            note.textContent = armed
+                ? 'Photo will be removed when you save.'
+                : noteText;
+        }
+    }
+    if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+            if (input.files && input.files.length) {
+                // Unpick a just-chosen file and put the pill back.
+                input.value = '';
+                if (pickLabel) pickLabel.textContent = pickText;
+                if (removeFlag) removeFlag.value = '';
+            } else if (removeFlag) {
+                // Arm or disarm removal of the stored photo.
+                removeFlag.value = removeFlag.value === 'true' ? '' : 'true';
+            }
+            paintAvatar();
+        });
+    }
+    if (input) {
+        input.setAttribute('accept', 'image/jpeg,image/png,image/gif');
+        input.addEventListener('change', () => {
+            const file = input.files && input.files[0];
+            if (pickLabel && file) pickLabel.textContent = file.name;
+            if (file) {
+                // A fresh upload wins: drop any armed removal and let
+                // the downscaler below announce the pending picture.
+                if (removeFlag) removeFlag.value = '';
+                if (note) note.textContent = noteText;
+            }
+            paintAvatar();
+            if (!file || !file.type.startsWith('image/')) return;
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.onload = () => {
+                const side = Math.min(256, Math.max(img.width, img.height));
+                const scale = side / Math.max(img.width, img.height);
+                const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                URL.revokeObjectURL(url);
+                canvas.toBlob((blob) => {
+                    if (!blob) return;
+                    const resized = new File([blob], 'avatar.jpg', {type: 'image/jpeg'});
+                    const data = new DataTransfer();
+                    data.items.add(resized);
+                    input.files = data.files;
+                    if (note) note.textContent = 'Picture ready — about ' + Math.round(blob.size / 1024) + ' KB, will upload on Save.';
+                }, 'image/jpeg', 0.85);
+            };
+            img.src = url;
+        });
+    }
+    paintAvatar();
+</script>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}Admin · Boards{% endblock %}
+
+{% block content %}
+<div class="admin-topbar">
+    <a href="{% url 'climbs:climb-admin' %}?wall={{ wall }}{% if selected %}&set={{ selected.id }}{% endif %}">Climb edit</a>
+    <a href="{% url 'climbs:board-admin' %}?wall={{ wall }}{% if selected %}&set={{ selected.id }}{% endif %}" class="on">Leaderboards</a>
+</div>
+<div class="admin-layout">
+    <aside class="inspector">
+        <form method="get" action="{% url 'climbs:board-admin' %}" class="insp-wall">
+            {% for w in walls %}
+                <button type="submit" name="wall" value="{{ w.wall }}" class="{% if w.wall == wall %}on{% endif %}">{{ w.display }}</button>
+            {% endfor %}
+        </form>
+        {% if sets %}
+            {% for s in sets %}
+                <details class="insp-set"{% if selected and s.id == selected.id %} open{% endif %}>
+                    <summary>
+                        <form method="get" action="{% url 'climbs:board-admin' %}" class="insp-set-pick">
+                            <input type="hidden" name="wall" value="{{ wall }}">
+                            <button type="submit" name="set" value="{{ s.id }}" title="View this set">{{ s.label }}</button>
+                        </form>
+                        {% if active and s.id == active.id %}<span class="insp-live">live</span>{% endif %}
+                        <span class="insp-date">{{ s.created_at|date:"j M Y" }}</span>
+                    </summary>
+                </details>
+            {% endfor %}
+        {% else %}
+            <p class="muted">No sets yet.</p>
+        {% endif %}
+    </aside>
+    <div class="admin-main">
+        <section class="card">
+            <h3>Leaderboard · {% if selected %}{{ selected.label }}{% else %}—{% endif %}</h3>
+            {% if board %}
+                <table>
+                    <thead>
+                        <tr><th>Climber</th><th>Sends</th><th>Points</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        {% for row in board %}
+                            <tr>
+                                <td>{{ row.user__username }}</td>
+                                <td>{{ row.sends }}</td>
+                                <td>{{ row.points }}</td>
+                                <td><button class="btn btn-sm btn-secondary" data-remove-user="{{ row.user__username }}" type="button">Remove</button></td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <p class="muted">Removing pulls every send of theirs off this set's board. Ratings, grade votes and comments stay.</p>
+            {% else %}
+                <p class="muted">No sends on this set yet.</p>
+            {% endif %}
+        </section>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const SELECTED_SET_ID = {% if selected %}{{ selected.id }}{% else %}null{% endif %};
+
+function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : null;
+}
+
+async function api(url, method, body) {
+    const res = await fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+    return data;
+}
+
+document.querySelectorAll('[data-remove-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const username = btn.dataset.removeUser;
+        if (!confirm(`Pull ${username} off this set's board? All their sends here are deleted.`)) return;
+        try {
+            const res = await api(`/admin-tools/sets/${SELECTED_SET_ID}/remove-user/`, 'POST', {username});
+            alert(`Removed ${res.removed} send${res.removed === 1 ? '' : 's'}.`);
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+</script>
+{% endblock %}
