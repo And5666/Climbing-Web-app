@@ -1,34 +1,43 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en" data-theme="blueprint">
+<html lang="en" data-theme="modern">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Climb Map{% endblock %}</title>
     <script>
         // Apply the saved theme before first paint so there is no
-        // flash. Unknown values (retired names) fall back to blueprint.
+        // flash. No saved choice: modern, or midnight when the OS
+        // asks for dark. Unknown values (retired names) fall back
+        // to the same default.
         try {
             const saved = localStorage.getItem('summit-theme');
+            const dark = window.matchMedia &&
+                matchMedia('(prefers-color-scheme: dark)').matches;
+            const fallback = dark ? 'midnight' : 'modern';
             document.documentElement.dataset.theme = [
                 'abyss', 'blueprint', 'ember', 'forest', 'clay',
-            ].includes(saved) ? saved : 'blueprint';
-        } catch (e) { /* private mode: stay on blueprint */ }
+                'modern', 'midnight',
+            ].includes(saved) ? saved : fallback;
+        } catch (e) { /* private mode: stay on modern */ }
     </script>
     <link rel="stylesheet" href="{% static 'climbs/style.css' %}">
 </head>
 <body>
     <div class="bg-fixed"></div>
 
-    <nav>
+    <nav aria-label="Primary">
         <span class="brand" aria-hidden="true">summit<span class="brand-mark">_map</span></span>
+        {% with current=request.resolver_match.url_name %}
         <div class="nav-links">
-            <a href="{% url 'climbs:map' %}">Map</a>
-            <a href="{% url 'climbs:leaderboard' %}">Leaderboard</a>
+            <a href="{% url 'climbs:map' %}" class="nav-link{% if current == 'map' %} active{% endif %}"{% if current == 'map' %} aria-current="page"{% endif %}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a4.5 4.5 0 0 0-4.5 4.5C3.5 9.5 8 14.5 8 14.5S12.5 9.5 12.5 6A4.5 4.5 0 0 0 8 1.5Zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4Z" fill="currentColor"/></svg>Map</a>
+            <a href="{% url 'climbs:leaderboard' %}" class="nav-link{% if current == 'leaderboard' %} active{% endif %}"{% if current == 'leaderboard' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.5 13 17 22l-5-3-5 3 1.5-9"/></svg>Leaderboard</a>
+            <a href="{% url 'climbs:news' %}" class="nav-link{% if current == 'news' %} active{% endif %}"{% if current == 'news' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h7M7 13h10M7 17h6"/></svg>News</a>
             {% if user.is_staff %}
-                <a href="{% url 'climbs:climb-admin' %}">Admin</a>
+                <a href="{% url 'climbs:climb-admin' %}" class="nav-link{% if current == 'climb-admin' or current == 'board-admin' %} active{% endif %}"{% if current == 'climb-admin' or current == 'board-admin' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Admin</a>
             {% endif %}
         </div>
+        {% endwith %}
         <div class="nav-user">
             {% if user.is_authenticated %}
                 <a href="{% url 'accounts:profile' %}" class="nav-profile">
@@ -137,6 +146,35 @@
             });
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && card.classList.contains('open')) closeCard();
+            });
+        })();
+    </script>
+    <script>
+        // Password peek: every password field gets an eye toggle.
+        // It degrades gracefully — without JS the fields stay plain
+        // password inputs, and the value is never touched.
+        (function () {
+            const EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+            const EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+            document.querySelectorAll('input[type="password"]').forEach((input) => {
+                const wrap = document.createElement('span');
+                wrap.className = 'pw-wrap';
+                input.replaceWith(wrap);
+                wrap.append(input);
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'pw-peek';
+                btn.setAttribute('aria-label', 'Show password');
+                btn.setAttribute('aria-pressed', 'false');
+                btn.innerHTML = EYE;
+                btn.addEventListener('click', () => {
+                    const show = input.type === 'password';
+                    input.type = show ? 'text' : 'password';
+                    btn.innerHTML = show ? EYE_OFF : EYE;
+                    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                    btn.setAttribute('aria-pressed', String(show));
+                });
+                wrap.append(btn);
             });
         })();
     </script>

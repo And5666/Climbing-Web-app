@@ -23,6 +23,15 @@
                 <button type="button" data-marker-filter="sent" aria-pressed="false">Sent</button>
                 <button type="button" data-marker-filter="unsent" aria-pressed="false">Unsent</button>
             </div>
+            <label class="grade-search">
+                <span class="marker-filter-label">Grade</span>
+                <select id="grade-filter">
+                    <option value="all">All grades</option>
+                    {% for g in grade_choices %}
+                        <option value="{{ g }}">{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </label>
             {% if archived_any %}
                 <p class="muted">Viewing an archived set — logging, rating and voting are off. <a href="{% url 'climbs:map' %}">Back to current</a></p>
             {% endif %}
@@ -31,19 +40,19 @@
     <div id="map-viewport">
         <div id="map-stack">
             <div id="map-content">
-                <img src="{% static 'climbs/wall.svg' %}" id="wall-img" alt="Gym wall map">
+                {% include "climbs/_wall.html" %}
 
                 <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
                      xmlns="http://www.w3.org/2000/svg">
                     {% for climb in climbs %}
-                        <g class="climb-marker" data-climb-id="{{ climb.id }}">
+                        <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}">
                             <circle class="climb-hit" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="20"
                                     fill="rgba(0,0,0,0)"/>
                             <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
                                     fill="{{ climb.colour }}" stroke="#ffffff" stroke-width="1.2"/>
                             <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
                                   text-anchor="middle" dominant-baseline="central"
-                                  fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.grade|default:"?" }}</text>
+                                  fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.display_grade|default:"?" }}</text>
                         </g>
                     {% endfor %}
                 </svg>
@@ -182,7 +191,10 @@
         const TAG_VALUES = ['white', 'black', 'red', 'green', 'blue',
             'yellow', 'orange', 'project', 'mystery'];
         function climbTag(tag, grade) {
-            const label = /^V(\d+)$/.exec(grade || '') ? grade : '?';
+            // Mystery climbs hide their grade behind '?' until the
+            // setters reveal it the following week.
+            const label = tag === 'mystery' ? '?'
+                : (/^V(\d+)$/.exec(grade || '') ? grade : '?');
             const cls = 'tag-' + (TAG_VALUES.includes(tag) ? tag : 'mystery');
             return {cls, label};
         }
@@ -207,7 +219,9 @@
             // Grade voting is three-way: the setter's grade stands, and
             // voters just say harder or softer. Harder/softer post one
             // grade above/below the set grade, which is all the
-            // harder/at/softer counts need.
+            // harder/at/softer counts need. Mystery climbs take no
+            // votes at all until their grade is revealed.
+            const isMystery = data.is_mystery || data.tag === 'mystery';
             const gi = Math.max(0, GRADES.indexOf(data.grade));
             const giMine = GRADES.indexOf(v.my_grade);
             const myDir = giMine < 0 ? null : (giMine > gi ? 'harder' : (giMine < gi ? 'softer' : 'at'));
@@ -219,11 +233,27 @@
                 '<button class="chip' + (b.dir === 'at' ? ' set' : '') + (myDir === b.dir ? ' mine' : '') + '"' +
                 ' data-dir="' + b.dir + '" aria-pressed="' + (myDir === b.dir) + '">' + b.label + '</button>'
             ).join('');
+            const gradeBlock = isMystery ? `
+                <h4>What do you feel it is?</h4>
+                <p class="muted">Mystery tag — the grade is revealed next week. Sends score a flat ${data.mystery_points || 300} pts, no harder/softer votes till then.</p>
+            ` : `
+                <h4>This climb has been proposed ${esc(data.grade || '?')} — do you agree?</h4>
+                <div class="chips">${gradeBtns}</div>
+                <p class="muted">▲ ${votes.harder || 0} harder · ${votes.at || 0} at grade · ▼ ${votes.softer || 0} softer</p>
+            `;
 
-            const ascents = (data.recent_ascents || []).map(a =>
-                '<li>' + esc(a.user) + ' — ' + triesText(a.tries) +
-                ' (' + a.points + ' pts)</li>'
-            ).join('') || '<li class="muted">Nobody has logged this one yet.</li>';
+            // Sends show the 3 most recent, with a tap to reveal all.
+            const allSends = data.recent_ascents || [];
+            const sendRow = (a) =>
+                '<li><button class="user-chip" data-username="' + esc(a.user) + '" type="button"><strong>' + esc(a.user) + '</strong></button> — ' + triesText(a.tries) +
+                ' (' + a.points + ' pts)</li>';
+            const ascents = allSends.length
+                ? allSends.slice(0, 3).map(sendRow).join('') +
+                    (allSends.length > 3
+                        ? '<span class="extra-sends" hidden>' + allSends.slice(3).map(sendRow).join('') + '</span>' +
+                          '<button class="btn btn-sm btn-secondary" id="p-more-sends">Show all ' + allSends.length + ' sends</button>'
+                        : '')
+                : '<li class="muted">Nobody has logged this one yet.</li>';
 
             // Comments show the first 5 with a tap to reveal the rest.
             const allComments = data.comments || [];
@@ -244,8 +274,8 @@
             // are frozen history: viewable, but nothing new can be
             // logged, rated or voted on them.
             const sendsBlock = `
-                <h4>Recent sends</h4>
-                <ul class="plain">${ascents}</ul>`;
+                <h4>Sends (${(data.recent_ascents || []).length})</h4>
+                <ul class="plain send-list">${ascents}</ul>`;
             const commentsBlock = (withForm) => `
                 <details class="comments-box">
                     <summary>Comments (${allComments.length})</summary>
@@ -279,7 +309,6 @@
                         <button class="step-btn" id="t-plus" aria-label="One more try">+</button>
                     </div>
                     <button class="btn btn-md btn-send" id="p-send-ascent">Log send ✓</button>
-                    <p class="muted">Log it once you've sent it — first time on this one? Leave it on Flash.</p>
                 `}
                 <h4>Rate it</h4>
                 <div class="rate-row" id="p-stars" role="group" aria-label="Rate this climb">
@@ -288,9 +317,7 @@
                         return '<button class="rate-star' + (lit ? ' lit' : '') + '" data-rate="' + n + '" aria-label="Rate ' + n + ' out of 5">' + (lit ? '★' : '☆') + '</button>';
                     }).join('')}
                 </div>
-                <h4>What do you feel it is?</h4>
-                <div class="chips">${gradeBtns}</div>
-                <p class="muted">▲ ${votes.harder || 0} harder · ${votes.at || 0} at grade · ▼ ${votes.softer || 0} softer</p>
+                ${gradeBlock}
                 ${sendsBlock}
                 ${commentsBlock(true)}
             `);
@@ -315,6 +342,20 @@
             popup.setAttribute('aria-hidden', 'false');
             sheetBody.scrollTop = 0;
             sheetBody.querySelector('.sheet-x').addEventListener('click', closePopup);
+            const moreSends = sheetBody.querySelector('#p-more-sends');
+            if (moreSends) {
+                moreSends.addEventListener('click', () => {
+                    const extra = sheetBody.querySelector('.extra-sends');
+                    const showing = extra.hasAttribute('hidden');
+                    if (showing) {
+                        extra.removeAttribute('hidden');
+                        moreSends.textContent = 'Show fewer sends';
+                    } else {
+                        extra.setAttribute('hidden', '');
+                        moreSends.textContent = 'Show all ' + (3 + extra.querySelectorAll('li').length) + ' sends';
+                    }
+                });
+            }
             if (AUTHED) wirePopup(data.id, v.tries ?? 1, data.grade);
             sheetBody.querySelectorAll('[data-del-comment]').forEach(btn => {
                 btn.addEventListener('click', async () => {
@@ -477,28 +518,91 @@
             });
         })();
 
-        // Sent/unsent filter: one tap in the Sets panel hides the
-        // markers you don't want. The choice sticks on this device,
-        // so it survives the reload after logging a send.
+        // Edge slider: pull the Sets tab right to drag it open, push
+        // it left to slide it shut. A real drag never toggles the
+        // tab — only a clean tap does.
+        (() => {
+            const switcher = document.getElementById('set-switcher');
+            if (!switcher) return;
+            const tab = switcher.querySelector('summary');
+            const panel = switcher.querySelector('.set-panel');
+            if (!tab) return;
+            let startX = null, dragged = false;
+            const begin = (x) => { startX = x; dragged = false; };
+            const move = (x) => {
+                if (startX === null) return;
+                if (Math.abs(x - startX) > 12) {
+                    dragged = true;
+                    switcher.open = x > startX;
+                }
+            };
+            const end = () => { startX = null; };
+            tab.addEventListener('pointerdown', (e) => begin(e.clientX));
+            tab.addEventListener('pointermove', (e) => {
+                if (e.buttons) move(e.clientX);
+            });
+            tab.addEventListener('pointerup', end);
+            tab.addEventListener('pointercancel', end);
+            tab.addEventListener('click', (e) => {
+                if (dragged) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dragged = false;
+                }
+            }, true);
+            if (panel) {
+                panel.addEventListener('pointerdown', (e) => begin(e.clientX));
+                panel.addEventListener('pointermove', (e) => {
+                    if (e.buttons) move(e.clientX);
+                });
+                panel.addEventListener('pointerup', end);
+                panel.addEventListener('pointercancel', end);
+            }
+        })();
+
+        // Marker status: every climb always shows. The Show buttons
+        // dim the other group instead of hiding it, and the grade
+        // search hides every marker outside the picked grade
+        // (mystery climbs could be anything, so they always stay).
+        // Both choices stick on this device, so they survive the
+        // reload after logging a send.
         const SENT_IDS = new Set([{% for id in sent_ids %}{{ id }}{% if not forloop.last %}, {% endif %}{% endfor %}]);
         const FILTER_KEY = 'summit-filter';
+        const GRADE_KEY = 'summit-grade';
         let markerFilter = 'all';
+        let gradeFilter = 'all';
         try {
             const saved = localStorage.getItem(FILTER_KEY);
             if (['all', 'sent', 'unsent'].includes(saved)) markerFilter = saved;
+            const savedGrade = localStorage.getItem(GRADE_KEY);
+            if (savedGrade) gradeFilter = savedGrade;
         } catch (e) { /* private mode: stay on all */ }
         function applyMarkerFilter() {
             document.querySelectorAll('.climb-marker').forEach(m => {
                 const sent = SENT_IDS.has(parseInt(m.dataset.climbId, 10));
-                const show = markerFilter === 'all' || (markerFilter === 'sent') === sent;
-                m.style.display = show ? '' : 'none';
+                const gradeOk = gradeFilter === 'all' ||
+                    m.dataset.grade === gradeFilter || m.dataset.grade === '?';
+                if (!gradeOk) {
+                    m.style.display = 'none';
+                    return;
+                }
+                m.style.display = '';
+                const dim = (markerFilter === 'sent' && !sent) ||
+                    (markerFilter === 'unsent' && sent);
+                m.style.opacity = dim ? '0.25' : '';
             });
             document.querySelectorAll('[data-marker-filter]').forEach(b => {
                 b.setAttribute('aria-pressed',
                     b.dataset.markerFilter === markerFilter ? 'true' : 'false');
             });
+            const gradeSel = document.getElementById('grade-filter');
+            if (gradeSel && ![...gradeSel.options].some(o => o.value === gradeFilter)) {
+                gradeFilter = 'all';
+            }
+            if (gradeSel) gradeSel.value = gradeFilter;
             try {
                 localStorage.setItem(FILTER_KEY, markerFilter);
+                localStorage.setItem(GRADE_KEY, gradeFilter);
             } catch (e) { /* private mode: filter lasts the visit */ }
         }
         document.querySelectorAll('[data-marker-filter]').forEach(b => {
@@ -506,6 +610,10 @@
                 markerFilter = b.dataset.markerFilter;
                 applyMarkerFilter();
             });
+        });
+        document.getElementById('grade-filter').addEventListener('change', (e) => {
+            gradeFilter = e.target.value;
+            applyMarkerFilter();
         });
         applyMarkerFilter();
 

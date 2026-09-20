@@ -3,7 +3,15 @@ GRADE_BASE_POINTS = {
     'V5': 550, 'V6': 700, 'V7': 900, 'V8': 1100, 'V9': 1400, 'V10': 1700,
 }
 
-def calculate_points(grade: str, tries: int) -> int:
+# Mystery climbs award one flat amount while their grade is hidden —
+# no flash bonus, no try penalty — until the setters reveal the grade
+# the following week (later sends then score normally).
+MYSTERY_FIXED_POINTS = 300
+
+
+def calculate_points(grade: str, tries: int, tag=None) -> int:
+    if tag == 'mystery':
+        return MYSTERY_FIXED_POINTS
     base = GRADE_BASE_POINTS.get(grade, 100)
     if tries == 1:
         return base

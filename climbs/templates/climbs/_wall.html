@@ -1,0 +1,50 @@
+{% comment %}Wall diagram, inlined so it stays vector under pinch-zoom
+(an <img> would rasterize once and smear as a bitmap). Four fills tile
+with no overlap, one path draws every feature line and one draws the
+frame, so left and right share one stroke style. Colours come from theme
+variables; widths and opacities stay fixed.{% endcomment %}
+<svg class="wall-svg" viewBox="0 0 164.42926 491.13571" role="img" aria-label="Gym wall map" xmlns="http://www.w3.org/2000/svg">
+  <!-- Main body (light, most transparent) -->
+  <path id="fill-body" class="wall-panel" fill-opacity="0.10"
+        d="M 90.4,2 H 140.8 V 45.6 H 156.5 V 60.8 L 124,80.8 L 156.5,104.8
+           L 134,122.8 L 156.5,131.8 V 169.8 L 123,189.8 V 242.8
+           L 143,280.8 V 353.8 L 113,410.8 L 147,423.8 V 489.1
+           H 92.5 V 453.8 L 60,434.8 V 190.3 H 27.8 L 15.3,167.4
+           L 69,154.8 V 142.8 L 14,122.8 L 57,112.8 L 8,100.8
+           V 54.4 H 90.4 Z"/>
+
+  <!-- Upper-left section -->
+  <path id="fill-upper-left" class="wall-panel" fill-opacity="0.5"
+        d="M 2,2 H 90.4 V 54.4 H 8 V 100.8 L 57,112.8 L 14,122.8
+           L 69,142.8 V 154.8 L 15.3,167.4 L 27.8,190.3 H 2 Z"/>
+
+  <!-- Right jagged wall -->
+  <path id="fill-right-wall" class="wall-panel" fill-opacity="0.5"
+        d="M 156.5,45.6 V 60.8 L 124,80.8 L 156.5,104.8 L 134,122.8
+           L 156.5,131.8 V 169.8 L 123,189.8 V 242.8 L 143,280.8
+           V 353.8 L 113,410.8 L 147,423.8 V 489.1 H 162.4 V 45.6 Z"/>
+
+  <!-- Top-right box -->
+  <path id="fill-top-right-box" class="wall-panel" fill-opacity="0.5"
+        d="M 140.8,2 H 162.4 V 45.6 H 140.8 Z"/>
+
+  <!-- Every wall line in one path, one stroke style (left and right
+       identical); a single element can't overlap itself darker. -->
+  <path id="wall-lines" fill="none" class="wall-line wall-feature" stroke-opacity="0.9"
+        stroke-linejoin="round" stroke-linecap="butt"
+        vector-effect="non-scaling-stroke"
+        d="M 90.4,2 V 54.4 H 8 V 100.8 L 57,112.8 L 14,122.8
+           L 69,142.8 V 154.8 L 15.3,167.4 L 27.8,190.3
+           M 60,190.3 V 434.8 L 92.5,453.8 V 489.1 H 147 V 423.8
+           L 113,410.8 L 143,353.8 V 280.8 L 123,242.8 V 189.8
+           L 156.5,169.8 V 131.8 L 134,122.8 L 156.5,104.8
+           L 124,80.8 L 156.5,60.8 V 45.6
+           M 140.8,2 V 45.6 H 162.4"/>
+
+  <!-- Outer frame: one continuous thick line, inset from the canvas edge
+       with round joins so the stroke is never clipped. -->
+  <path id="frame" fill="none" class="wall-line wall-edge"
+        stroke-linejoin="round" stroke-linecap="butt"
+        vector-effect="non-scaling-stroke"
+        d="M 61.1,190.3 H 2 V 2 H 162.4 V 489.1 H 147"/>
+</svg>

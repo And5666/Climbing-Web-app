@@ -12,6 +12,43 @@ TAG_CHOICES = [
 ]
 TAG_VALUES = [slug for slug, _ in TAG_CHOICES]
 
+# Circuit bands: each tag covers two grades (the ends narrow to one,
+# project covers V8+). Mystery can be any grade — its true grade stays
+# hidden until the setters reveal it the following week.
+TAG_GRADE_NUMBERS = {
+    'white': (0, 1),
+    'black': (1, 2),
+    'red': (2, 3),
+    'green': (3, 4),
+    'blue': (4, 5),
+    'yellow': (5, 6),
+    'orange': (6, 7),
+    'project': (8, 9, 10),
+    'mystery': tuple(range(0, 11)),
+}
+
+GRADES_BY_TAG = {
+    tag: [f'V{n}' for n in numbers]
+    for tag, numbers in TAG_GRADE_NUMBERS.items()
+}
+
+TAGS_BY_GRADE = {}
+for _tag, _grades in GRADES_BY_TAG.items():
+    if _tag == 'mystery':
+        continue
+    for _grade in _grades:
+        TAGS_BY_GRADE.setdefault(_grade, []).append(_tag)
+
+
+def grades_for_tag(tag):
+    """Grade labels one tag may represent (mystery allows any grade)."""
+    return list(GRADES_BY_TAG.get(tag, []))
+
+
+def tag_supports_grade(tag, grade):
+    """True when a climb may wear `tag` at `grade`."""
+    return grade in GRADES_BY_TAG.get(tag, [])
+
 
 def grade_number(grade):
     """'V10' -> 10. Returns None for unparseable grades."""
@@ -87,6 +124,18 @@ class Climb(models.Model):
         return Counter(grades).most_common(1)[0][0]
 
     @property
+    def display_grade(self):
+        """Grade shown to climbers: mystery climbs hide their grade
+        behind '?' until the setters reveal it the following week."""
+        if self.tag == 'mystery':
+            return '?'
+        return self.grade
+
+    @property
+    def is_mystery(self):
+        return self.tag == 'mystery'
+
+    @property
     def tag_class(self):
         """CSS class for the climb's circuit tag colour. The tag is a
         per-climb attribute, independent of grade: a V3 can wear red
@@ -106,7 +155,8 @@ class Ascent(models.Model):
     def save(self, *args, **kwargs):
         if not self.points:
             from .scoring import calculate_points
-            self.points = calculate_points(self.climb.grade, self.tries)
+            self.points = calculate_points(
+                self.climb.grade, self.tries, self.climb.tag)
         super().save(*args, **kwargs)
 
     class Meta:
@@ -131,6 +181,24 @@ class Rating(models.Model):
 
     class Meta:
         unique_together = ('user', 'climb')
+
+
+class NewsPost(models.Model):
+    """Gym news (upcoming set dates, events...). Newest first;
+    staff post from the news page itself."""
+    title = models.CharField(max_length=200)
+    body = models.TextField(max_length=5000)
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='news_posts',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.title
 
 
 class Comment(models.Model):

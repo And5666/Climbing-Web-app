@@ -11,7 +11,10 @@
             <section class="board">
                 <h3>{{ wall.wall_display }}</h3>
                 {% if wall.is_archived %}
-                    <p class="archive-note">Archived · {{ wall.selected_set.range_start|date:"j M Y" }}{% if wall.selected_set.range_end %} – {{ wall.selected_set.range_end|date:"j M Y" }}{% endif %} · <a href="{% url 'climbs:leaderboard' %}">Back to current</a></p>
+                    <p class="archive-note">Archived · {{ wall.selected_set.range_start|date:"j M Y" }}{% if wall.selected_set.range_end %} – {{ wall.selected_set.range_end|date:"j M Y" }}{% endif %}</p>
+                    <form method="get" action="{% url 'climbs:leaderboard' %}" class="archive-back">
+                        <button type="submit" class="btn btn-sm btn-secondary">Back to current</button>
+                    </form>
                 {% endif %}
                 {% if wall.me %}
                     <p class="me-line"><span class="row-user">{% if wall.me.avatar %}<img src="{% get_media_prefix %}{{ wall.me.avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>{% endif %}You: #{{ wall.me.rank }} of {{ wall.me.of }} · {{ wall.me.points }} pts · {{ wall.me.climbs }} sends</span></p>
@@ -22,13 +25,13 @@
                     <div class="table-wrap">
                         <table>
                             <thead>
-                                <tr><th>#</th><th>Climber</th><th>Sends</th><th>Points</th></tr>
+                                <tr><th scope="col">#</th><th scope="col">Climber</th><th scope="col">Sends</th><th scope="col">Points</th></tr>
                             </thead>
                             <tbody>
                                 {% for row in wall.rows %}
-                                    <tr class="{% if row.user__username == user.username %}me{% endif %}{% if row.user__username == user.username and forloop.counter > 10 %} {% endif %}{% if forloop.counter > 10 %}extra-row{% endif %}"{% if forloop.counter > 10 %} hidden{% endif %}>
+                                    <tr class="{% if row.position == 1 %}winner {% endif %}{% if row.user__username == user.username %}me {% endif %}{% if forloop.counter > 10 %}extra-row{% endif %}"{% if forloop.counter > 10 %} hidden{% endif %}>
                                         <td>{% if row.position <= 3 %}<span class="pos-{{ row.position }}">{{ row.position }}</span>{% else %}{{ row.position }}{% endif %}</td>
-                                        <td><button class="user-chip row-user" data-username="{{ row.user__username }}" type="button">{% if row.user__avatar %}<img src="{% get_media_prefix %}{{ row.user__avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ row.user__username|first|upper }}</span>{% endif %}{{ row.user__username }}</button></td>
+                                        <td><button class="user-chip row-user" data-username="{{ row.user__username }}" type="button">{% if row.user__avatar %}<img src="{% get_media_prefix %}{{ row.user__avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ row.user__username|first|upper }}</span>{% endif %}{% if row.position == 1 %}<span class="crown" aria-hidden="true">★</span>{% endif %}{{ row.user__username }}</button></td>
                                         <td>{{ row.climb_count }}</td>
                                         <td>{{ row.total_points }}</td>
                                     </tr>
@@ -51,51 +54,48 @@
             <section class="board">
                 <h3>{{ wall.wall_display }} · stats</h3>
                 {% if wall.stats and wall.stats.total_sends %}
-                    <ul class="plain rank-list">
+                    {% if not wall.stats.best_rated and not wall.stats.most_popular and not wall.stats.softest and not wall.stats.hardest %}
+                        <p class="muted">Stats fill in as sends, ratings and votes land.</p>
+                    {% endif %}
+                    <ul class="plain rank-list stat-list">
+                        {% if wall.stats.best_rated %}
                         <li><span>Best rated</span>
-                            {% if wall.stats.best_rated %}
-                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.best_rated.climb.id }}"><span class="grade-pill {{ wall.stats.best_rated.climb.tag_class }}">{{ wall.stats.best_rated.climb.grade }}</span>
-                                {{ wall.stats.best_rated.climb.name|default:wall.stats.best_rated.climb.colour }}</a> · <span class="rating-num">{{ wall.stats.best_rated.avg }} ({{ wall.stats.best_rated.count }})</span></span>
-                            {% else %}
-                                <span class="muted">—</span>
-                            {% endif %}
+                            <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.best_rated.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.best_rated.climb.tag_class }}">{{ wall.stats.best_rated.climb.display_grade }}</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.best_rated.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.best_rated.climb.name|default:wall.stats.best_rated.climb.colour }}</button></form> <span class="rating-num">{{ wall.stats.best_rated.avg }} ({{ wall.stats.best_rated.count }})</span></span>
                         </li>
+                        {% endif %}
+                        {% if wall.stats.most_popular %}
                         <li><span>Most popular</span>
-                            {% if wall.stats.most_popular %}
-                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.most_popular.climb.id }}"><span class="grade-pill {{ wall.stats.most_popular.climb.tag_class }}">{{ wall.stats.most_popular.climb.grade }}</span>
-                                {{ wall.stats.most_popular.climb.name|default:wall.stats.most_popular.climb.colour }}</a> · {{ wall.stats.most_popular.sends }} sends</span>
-                            {% else %}
-                                <span class="muted">—</span>
-                            {% endif %}
+                            <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.most_popular.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.most_popular.climb.tag_class }}">{{ wall.stats.most_popular.climb.display_grade }}</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.most_popular.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.most_popular.climb.name|default:wall.stats.most_popular.climb.colour }}</button></form> {{ wall.stats.most_popular.sends }} sends</span>
                         </li>
+                        {% endif %}
+                        {% if wall.stats.softest %}
                         <li><span>Softest</span>
-                            {% if wall.stats.softest %}
-                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.softest.climb.id }}"><span class="grade-pill {{ wall.stats.softest.climb.tag_class }}">{{ wall.stats.softest.climb.grade }}</span>
-                                {{ wall.stats.softest.climb.name|default:wall.stats.softest.climb.colour }}</a> · {{ wall.stats.softest.votes }} softer</span>
-                            {% else %}
-                                <span class="muted">—</span>
-                            {% endif %}
+                            <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.softest.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.softest.climb.tag_class }}">{{ wall.stats.softest.climb.display_grade }}</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.softest.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.softest.climb.name|default:wall.stats.softest.climb.colour }}</button></form> {{ wall.stats.softest.votes }} softer</span>
                         </li>
+                        {% endif %}
+                        {% if wall.stats.hardest %}
                         <li><span>Hardest</span>
-                            {% if wall.stats.hardest %}
-                                <span><a href="{% url 'climbs:map' %}?climb={{ wall.stats.hardest.climb.id }}"><span class="grade-pill {{ wall.stats.hardest.climb.tag_class }}">{{ wall.stats.hardest.climb.grade }}</span>
-                                {{ wall.stats.hardest.climb.name|default:wall.stats.hardest.climb.colour }}</a> · {{ wall.stats.hardest.votes }} harder</span>
-                            {% else %}
-                                <span class="muted">—</span>
-                            {% endif %}
+                            <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.hardest.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.hardest.climb.tag_class }}">{{ wall.stats.hardest.climb.display_grade }}</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.hardest.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.hardest.climb.name|default:wall.stats.hardest.climb.colour }}</button></form> {{ wall.stats.hardest.votes }} harder</span>
                         </li>
-                        <li><span>Total</span>
+                        {% endif %}
+                        <li class="stat-total"><span>Total</span>
                             <span>{{ wall.stats.total_sends }} sends · {{ wall.stats.climbers }} climbers</span>
                         </li>
                     </ul>
                     <h4>Sends by grade</h4>
                     <div class="graph">
                         {% for g in wall.stats.grade_graph %}
+                            {% if g.sends %}
                             <div class="graph-row">
                                 <span class="graph-grade">{{ g.grade }}</span>
                                 <span class="graph-track">{% for s in g.segments %}<span class="gbar {{ s.tag }}" style="width:{{ s.pct }}%"></span>{% endfor %}</span>
                                 <span class="graph-count">{{ g.sends }}</span>
                             </div>
+                            {% endif %}
                         {% endfor %}
                     </div>
                 {% else %}

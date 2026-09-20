@@ -161,7 +161,7 @@ if not DEBUG:
             "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
         },
     }
-MEDIA_URL = 'media/'
+MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(os.environ.get("DJANGO_MEDIA_PATH", BASE_DIR / 'media'))
 LOGIN_REDIRECT_URL = "climbs:map"
 LOGOUT_REDIRECT_URL = "climbs:map"

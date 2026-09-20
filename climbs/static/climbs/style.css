@@ -8,6 +8,7 @@
    drawn-on, not washed-out. */
 :root,
 :root[data-theme="abyss"] {
+    color-scheme: dark;
     --font-body: ui-monospace, "Cascadia Mono", "JetBrains Mono",
         SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     --font-display: ui-monospace, "Cascadia Mono", "JetBrains Mono",
@@ -16,10 +17,10 @@
     --bg: #070c13;
     --surface: #0e1622;
     --surface-2: #152032;
-    --border: #35506a;
-    --border-soft: #1c2a3a;
+    --border: #41627f;
+    --border-soft: #22344a;
     --text: #e9eff5;
-    --muted: #8fa1b3;
+    --muted: #a4b9cd;
     --accent: #5cc3e6;
     --accent-ink: #062128;
     --link: #bcab79;
@@ -33,9 +34,20 @@
     --r-sm: 2px;
     --r-btn: 4px;
     --r-md: 4px;
+    --bw: 2px;
+    --shadow: 4px 4px 0 rgba(0, 0, 0, 0.55);
+    --heading-transform: uppercase;
+    --heading-spacing: 0.08em;
+    --me-bg: #1a2a3e;
+    --dot-radius: var(--r-sm);
+    --wall-wash: #7a7a7a;
+    --wall-panel: #33404f;
+    --wall-line: #ffffff;
+    --wall-line-dim: #8fa0b3;
 }
 
 :root[data-theme="blueprint"] {
+    color-scheme: light;
     --font-body: ui-monospace, "Cascadia Mono", "JetBrains Mono",
         SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     --font-display: ui-monospace, "Cascadia Mono", "JetBrains Mono",
@@ -60,10 +72,21 @@
     --r-sm: 2px;
     --r-btn: 4px;
     --r-md: 4px;
+    --bw: 1px;
+    --shadow: 3px 3px 0 rgba(70, 97, 111, 0.35);
+    --heading-transform: uppercase;
+    --heading-spacing: 0.08em;
+    --me-bg: #e1eaf1;
+    --dot-radius: var(--r-sm);
+    --wall-wash: #6b7280;
+    --wall-panel: #c3c9d1;
+    --wall-line: #3f454d;
+    --wall-line-dim: #9aa0a8;
 }
 
 /* Ember: amber-phosphor CRT, slightly softer buttons. */
 :root[data-theme="ember"] {
+    color-scheme: dark;
     --font-body: ui-monospace, "Cascadia Mono", "JetBrains Mono",
         SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     --font-display: ui-monospace, "Cascadia Mono", "JetBrains Mono",
@@ -89,10 +112,21 @@
     --r-sm: 2px;
     --r-btn: 6px;
     --r-md: 4px;
+    --bw: 2px;
+    --shadow: 4px 4px 0 rgba(0, 0, 0, 0.5);
+    --heading-transform: uppercase;
+    --heading-spacing: 0.08em;
+    --me-bg: #473a26;
+    --dot-radius: var(--r-sm);
+    --wall-wash: #7a7264;
+    --wall-panel: #5f5646;
+    --wall-line: #f2e7d3;
+    --wall-line-dim: #a39a86;
 }
 
 /* Forest: dark climbing-journal green, serif display. */
 :root[data-theme="forest"] {
+    color-scheme: dark;
     --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
     --font-display: Georgia, "Palatino Linotype", "Times New Roman", serif;
 
@@ -116,10 +150,21 @@
     --r-sm: 2px;
     --r-btn: 4px;
     --r-md: 4px;
+    --bw: 1px;
+    --shadow: none;
+    --heading-transform: none;
+    --heading-spacing: 0.02em;
+    --me-bg: #37472f;
+    --dot-radius: var(--r-sm);
+    --wall-wash: #6f7a6a;
+    --wall-panel: #55604f;
+    --wall-line: #eef0e4;
+    --wall-line-dim: #9aa094;
 }
 
 /* Clay: warm book-paper, full serif, roundest buttons. */
 :root[data-theme="clay"] {
+    color-scheme: light;
     --font-body: Georgia, "Palatino Linotype", "Times New Roman", serif;
     --font-display: Georgia, "Palatino Linotype", "Times New Roman", serif;
 
@@ -143,6 +188,92 @@
     --r-sm: 2px;
     --r-btn: 8px;
     --r-md: 6px;
+    --bw: 1px;
+    --shadow: 0 1px 2px rgba(60, 45, 20, 0.2);
+    --heading-transform: none;
+    --heading-spacing: 0.02em;
+    --me-bg: #e8dab9;
+    --dot-radius: var(--r-sm);
+    --wall-wash: #8a7f66;
+    --wall-panel: #9d8a5f;
+    --wall-line: #3f362a;
+    --wall-line-dim: #9a8f7c;
+}
+
+/* Modern: soft light look — smooth sans type, rounded corners. */
+:root[data-theme="modern"] {
+    color-scheme: light;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --bg: #eef1f5;
+    --surface: #ffffff;
+    --surface-2: #e9edf2;
+    --border: #cfd8e1;
+    --border-soft: #e0e6ec;
+    --text: #1d2733;
+    --muted: #5f7285;
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --link: #1d4ed8;
+    --sand: #9a7b1f;
+    --danger: #c0392b;
+    --danger-ink: #ffffff;
+    --ok: #2563eb;
+    --err: #c0392b;
+    --star: #d9a441;
+    --star-dim: #d3dae1;
+    --r-sm: 8px;
+    --r-btn: 12px;
+    --r-md: 16px;
+    --bw: 1px;
+    --shadow: 0 1px 3px rgba(25, 45, 80, 0.12);
+    --heading-transform: none;
+    --heading-spacing: 0.01em;
+    --me-bg: #dfe7f2;
+    --dot-radius: 3px;
+    --wall-wash: #6b7280;
+    --wall-panel: #c3c9d1;
+    --wall-line: #3f454d;
+    --wall-line-dim: #9aa0a8;
+}
+
+/* Midnight: soft dark look — smooth sans type, rounded corners. */
+:root[data-theme="midnight"] {
+    color-scheme: dark;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --bg: #0f141a;
+    --surface: #182029;
+    --surface-2: #212b36;
+    --border: #334052;
+    --border-soft: #232d3a;
+    --text: #edf2f7;
+    --muted: #97a9bc;
+    --accent: #6ea8fe;
+    --accent-ink: #0a1120;
+    --link: #9dc0fe;
+    --sand: #c9a86a;
+    --danger: #e07a5f;
+    --danger-ink: #170d07;
+    --ok: #6ea8fe;
+    --err: #e07a5f;
+    --star: #d9a441;
+    --star-dim: #3a4a5e;
+    --r-sm: 8px;
+    --r-btn: 12px;
+    --r-md: 16px;
+    --bw: 1px;
+    --shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+    --heading-transform: none;
+    --heading-spacing: 0.02em;
+    --me-bg: #2a3542;
+    --dot-radius: 3px;
+    --wall-wash: #7a7a7a;
+    --wall-panel: #5a636e;
+    --wall-line: #f2f5f8;
+    --wall-line-dim: #99a0a8;
 }
 
 /* --- Reset / base --- */
@@ -190,6 +321,19 @@ h1, h2, h3, h4 {
     z-index: -1;
 }
 
+/* Modern themes get a repeating dot print instead of the grid. */
+:root[data-theme="modern"] .bg-fixed {
+    background-image: radial-gradient(rgba(37, 99, 235, 0.16) 1.2px, transparent 1.3px);
+    background-color: var(--bg);
+    background-size: 22px 22px;
+}
+
+:root[data-theme="midnight"] .bg-fixed {
+    background-image: radial-gradient(rgba(110, 168, 254, 0.16) 1.2px, transparent 1.3px);
+    background-color: var(--bg);
+    background-size: 22px 22px;
+}
+
 /* Each theme brings a tile drawn for its own background. */
 :root[data-theme="blueprint"] .bg-fixed {
     background-image: url("/static/climbs/bg-grid-blueprint.jpg");
@@ -220,13 +364,16 @@ h1, h2, h3, h4 {
 /* --- Nav --- */
 nav {
     flex-shrink: 0;
+    position: relative;
+    z-index: 100;
     display: flex;
     align-items: center;
-    gap: 0.6rem;
+    gap: 0.75rem;
     flex-wrap: nowrap;
-    padding: 0.55rem 0.9rem;
+    padding: 0.5rem 0.9rem;
     background: var(--surface);
-    border-bottom: 2px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 0 var(--border-soft);
     font-family: var(--font-display);
 }
 
@@ -296,23 +443,45 @@ nav {
 nav a {
     display: inline-flex;
     align-items: center;
+    gap: 0.45rem;
     min-height: 44px;
-    color: var(--text);
+    color: var(--muted);
     text-decoration: none;
     font-weight: 700;
     font-size: 0.82rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    border-radius: var(--r-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    border-radius: var(--r-btn);
     padding: 0.5rem 0.75rem;
+    white-space: nowrap;
 }
 
 nav a:hover {
+    color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--border-soft);
+}
+
+nav a svg {
+    width: 1.05em;
+    height: 1.05em;
+    flex-shrink: 0;
+}
+
+/* Current page: filled accent pill, readable on every theme. */
+.nav-link.active {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--accent-ink);
+}
+
+.nav-link.active:hover {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+    filter: brightness(1.08);
 }
 
 .nav-user {
@@ -320,17 +489,36 @@ nav a:hover {
     align-items: center;
     gap: 0.5rem;
     margin-left: auto;
+    padding-left: 0.75rem;
+    border-left: 1px solid var(--border-soft);
 }
 
+/* Account: its own pill, visually separate from the nav links. */
 .nav-profile {
     display: flex;
     align-items: center;
     min-height: 44px;
-    gap: 0.45rem;
-    padding: 0.5rem 0.75rem;
+    gap: 0.5rem;
+    padding: 0.3rem 0.8rem 0.3rem 0.35rem;
     text-transform: none;
     letter-spacing: 0;
+    font-size: 0.85rem;
     white-space: nowrap;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-btn);
+}
+
+.nav-profile:hover {
+    border-color: var(--accent);
+    background: var(--surface-2);
+    color: var(--text);
+}
+
+.nav-profile .avatar-sm {
+    border-radius: 50%;
+    border: 1px solid var(--accent);
 }
 
 .nav-name {
@@ -499,11 +687,17 @@ nav a:hover {
 }
 
 .avatar-pick-row input[type="file"] {
-    position: absolute;
+    /* Fully off-canvas: an in-flow 1px input makes mobile
+       browsers scroll/zoom the page to it when the device
+       picker opens. 16px type stops the auto-zoom as well. */
+    position: fixed;
+    top: -9999px;
+    left: -9999px;
     width: 1px;
     height: 1px;
     opacity: 0;
     overflow: hidden;
+    font-size: 16px;
 }
 
 .avatar-pick {
@@ -524,12 +718,14 @@ nav a:hover {
     display: none;
 }
 
-/* Quiet summit_map mark pinned to the bottom-right of every page. */
+/* Quiet summit_map mark pinned to the bottom-right of every page.
+   It lives on the background layer so it can never sit in front of
+   markers, sheets or buttons. */
 .watermark {
     position: fixed;
     right: 0.7rem;
     bottom: 0.55rem;
-    z-index: 60;
+    z-index: -1;
     font-family: var(--font-display);
     font-weight: 800;
     font-size: 0.85rem;
@@ -613,6 +809,32 @@ nav a:hover {
     margin-top: 0.2rem;
 }
 
+/* One solid profile sheet: sections divided by soft rules, with a
+   friendlier header and a clearly marked danger zone at the foot. */
+.profile-sheet .profile-head {
+    align-items: center;
+}
+
+.profile-sheet .avatar-lg {
+    border-color: var(--accent);
+}
+
+.profile-sheet .sheet-section {
+    margin-top: 1.4rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.profile-sheet .sheet-section h3 {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0.6rem;
+}
+
+.profile-sheet .danger-zone h3 {
+    color: var(--err);
+}
+
 /* --- Theme switch: wrapping set of equal buttons --- */
 .theme-toggle {
     display: flex;
@@ -683,14 +905,15 @@ nav a:focus-visible,
 
 /* Variant: secondary/muted style, for less prominent actions */
 .btn-secondary {
-    background: transparent;
+    background: var(--surface-2);
     border: 1px solid var(--border);
     color: var(--text);
 }
 
 .btn-secondary:hover {
     background: var(--surface-2);
-    border-color: var(--text);
+    border-color: var(--accent);
+    color: var(--text);
     filter: none;
 }
 
@@ -786,6 +1009,15 @@ nav a:focus-visible,
     padding: 1.5rem;
 }
 
+/* The admin climb panel is bottom-docked: cap its height to the
+   viewport and scroll inside it, so it can never run off the top
+   of a phone screen. */
+#climb-edit-panel {
+    width: min(400px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+}
+
 .auth-form h2 {
     margin: 0 0 1rem;
     font-size: 0.9rem;
@@ -819,6 +1051,43 @@ nav a:focus-visible,
 .auth-form select:focus {
     outline: none;
     border-color: var(--accent);
+}
+
+/* Password peek: the eye sits inside the field's right edge. The
+   wrapper is display block so the layout matches a bare input. */
+.pw-wrap {
+    position: relative;
+    display: block;
+}
+
+.pw-wrap input {
+    width: 100%;
+    box-sizing: border-box;
+    padding-right: 2.6rem;
+}
+
+.pw-peek {
+    position: absolute;
+    right: 0.3rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: 0;
+    padding: 0.35rem;
+    color: var(--muted);
+    cursor: pointer;
+    line-height: 0;
+    border-radius: 0.35rem;
+}
+
+.pw-peek:hover {
+    color: var(--text);
+}
+
+.pw-peek svg {
+    width: 1.25rem;
+    height: 1.25rem;
+    display: block;
 }
 
 .auth-form .btn {
@@ -894,11 +1163,44 @@ main {
     height: 100%;
 }
 
-#wall-img {
+/* Inlined wall diagram: vector under zoom, colours per theme.
+   Two stroke widths, defined once: the structural edge and the
+   thinner feature lines. */
+:root {
+    --wall-edge: 4.5;
+    --wall-feature: 3.0;
+}
+
+.wall-svg {
     display: block;
     width: 100%;
     height: 100%;
-    object-fit: contain;
+}
+
+.wall-svg .wall-edge {
+    stroke-width: var(--wall-edge);
+}
+
+.wall-svg .wall-line.wall-feature {
+    stroke-width: var(--wall-feature);
+    stroke: var(--wall-line-dim);
+}
+
+.wall-svg .wall-wash {
+    fill: var(--wall-wash);
+}
+
+.wall-svg .wall-panel {
+    fill: var(--wall-panel);
+}
+
+.wall-svg .wall-line {
+    stroke: var(--wall-line);
+}
+
+.wall-svg .wall-box {
+    fill: var(--wall-panel);
+    stroke: var(--wall-line);
 }
 
 /* Overlay the clickable marker layer exactly on top of the wall image.
@@ -1122,10 +1424,16 @@ main {
 }
 
 :is(.grade-pill, .gbar).tag-mystery {
-    background: linear-gradient(135deg, #b3402f, #d97a2b, #d9b62c, #43914e, #2978a0, #6a5a9e);
+    /* Five horizontal stripes: the weekly mystery mix. */
+    background: linear-gradient(to bottom,
+        #b3402f 0%, #b3402f 20%,
+        #d9b62c 20%, #d9b62c 40%,
+        #2978a0 40%, #2978a0 60%,
+        #43914e 60%, #43914e 80%,
+        #6a5a9e 80%, #6a5a9e 100%);
     border-color: #8d9da8;
     color: #fff;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 3px rgba(0, 0, 0, 0.8);
 }
 
 #climb-popup .logged {
@@ -1134,6 +1442,14 @@ main {
     background: var(--surface-2);
     border: 1px solid var(--border);
     font-weight: 700;
+}
+
+/* The full send list scrolls inside the sheet on busy climbs. */
+#climb-popup .send-list {
+    max-height: 30vh;
+    overflow-y: auto;
+    margin: 0;
+    padding-left: 1.1rem;
 }
 
 #climb-popup .sheet-x {
@@ -1378,6 +1694,75 @@ ul.plain li {
     border-color: var(--accent);
 }
 
+/* Gym news: one sheet, newest first, staff post inline. */
+.news-page textarea {
+    width: 100%;
+    resize: vertical;
+    margin-bottom: 0.5rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font: inherit;
+    padding: 0.55rem 0.75rem;
+}
+
+.news-page textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.news-page .card > h2 {
+    margin: 0 0 0.5rem;
+}
+
+.news-page .sheet-section {
+    margin-top: 1.4rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.news-page .sheet-section h3 {
+    margin-bottom: 0.4rem;
+}
+
+.news-post .muted {
+    margin: 0 0 0.5rem;
+}
+
+.news-body {
+    overflow-wrap: anywhere;
+}
+
+.news-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.news-edit {
+    margin-top: 0.75rem;
+}
+
+.news-edit .btn {
+    width: 100%;
+    margin-top: 0.5rem;
+}
+
+.news-pages {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.news-pages form {
+    margin: 0;
+}
+
 .comment {
     border-top: 1px solid var(--border-soft);
     padding: 0.5rem 0;
@@ -1398,10 +1783,10 @@ ul.plain li {
 .boards h2 {
     margin: 0 0 1rem;
     font-size: 1rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
     padding-bottom: 0.5rem;
-    border-bottom: 2px solid var(--border);
+    border-bottom: var(--bw) solid var(--border);
 }
 
 .board-picker {
@@ -1437,14 +1822,20 @@ ul.plain li {
     display: flex;
     gap: 1rem;
     flex-wrap: wrap;
+    align-items: start;
+}
+
+.board-columns + .board-columns {
+    margin-top: 1rem;
 }
 
 .board {
     flex: 1;
     min-width: min(300px, 100%);
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: var(--bw) solid var(--border);
     border-radius: var(--r-md);
+    box-shadow: var(--shadow);
     padding: 1rem 1.1rem;
 }
 
@@ -1452,15 +1843,20 @@ ul.plain li {
     margin: 0 0 0.75rem;
     padding-bottom: 0.5rem;
     font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    border-bottom: 2px solid var(--border);
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
+    border-bottom: var(--bw) solid var(--border);
 }
 
+/* Your summary line: same highlight treatment as your table row. */
 .me-line {
-    margin: 0 0 0.5rem;
+    margin: 0 0 0.75rem;
+    padding: 0.55rem 0.75rem;
     font-weight: 700;
-    color: var(--sand);
+    color: var(--text);
+    background: var(--me-bg);
+    border-radius: var(--r-sm);
+    box-shadow: inset var(--bw) 0 0 var(--accent);
 }
 
 .table-wrap {
@@ -1468,7 +1864,14 @@ ul.plain li {
     -webkit-overflow-scrolling: touch;
 }
 
-.board table,
+/* Ranking tables stay light: no outer grid, no cell dividers —
+   just row separators and one strong header rule. */
+.board table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+}
+
 .card table {
     width: 100%;
     border-collapse: collapse;
@@ -1476,7 +1879,15 @@ ul.plain li {
 }
 
 .board th,
-.board td,
+.board td {
+    text-align: left;
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid var(--border-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .card th,
 .card td {
     text-align: left;
@@ -1485,14 +1896,34 @@ ul.plain li {
     white-space: nowrap;
 }
 
-.board th + th,
-.board td + td,
 .card th + th,
 .card td + td {
     border-left: 1px solid var(--border-soft);
 }
 
-.board thead th,
+.board th:first-child,
+.board td:first-child {
+    width: 2.8rem;
+    overflow: visible;
+}
+
+.board th:nth-child(3),
+.board td:nth-child(3),
+.board th:nth-child(4),
+.board td:nth-child(4) {
+    width: 4.2rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.board thead th {
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
+    border-bottom: var(--bw) solid var(--border);
+}
+
 .card thead th {
     color: var(--muted);
     font-size: 0.75rem;
@@ -1517,9 +1948,8 @@ ul.plain li {
     gap: 0.45rem;
 }
 
-/* Top-three medals ride on the position number: gold, silver,
-   bronze discs. Gold follows the theme star; silver and bronze step
-   down for light themes so they stay readable on pale boards. */
+/* Top-three medals ride on the position number: brass, muted and
+   sand discs, all theme tokens so they read on any background. */
 .pos-1,
 .pos-2,
 .pos-3 {
@@ -1540,51 +1970,77 @@ ul.plain li {
 }
 
 .pos-2 {
-    color: #c9d1d9;
+    color: var(--muted);
 }
 
 .pos-3 {
-    color: #e09a5a;
-}
-
-:root[data-theme="blueprint"] .pos-2,
-:root[data-theme="clay"] .pos-2 {
-    color: #5f6b76;
-}
-
-:root[data-theme="blueprint"] .pos-3,
-:root[data-theme="clay"] .pos-3 {
-    color: #8a5a1e;
+    color: var(--sand);
 }
 /* Sets live in a slide-over tab on the screen edge: closed it is
    just the tab, open it is a panel over the map. The disclosure
    itself does the toggling, so no script is needed. */
 #set-switcher {
     position: fixed;
-    right: 0;
+    left: 0;
     top: 4.25rem;
     z-index: 90;
     margin: 0;
-    max-width: min(320px, 84vw);
-    background: var(--surface);
+    width: auto;
+    max-width: calc(100vw - 1rem);
+    /* Elevated panel, not page surface: the bar sits over busy wall
+       art, so it needs its own tonal step to stand out shadow-free. */
+    background: var(--surface-2);
     border: 1px solid var(--border);
-    border-right: none;
-    border-radius: var(--r-md) 0 0 var(--r-md);
+    border-radius: 0 var(--r-md) var(--r-md) 0;
+    overflow: hidden;
+}
+
+/* Open, the switcher is a docked drawer; closed, a compact tab. */
+#set-switcher[open] {
+    width: min(320px, calc(100vw - 1rem));
 }
 
 #set-switcher > summary {
     list-style: none;
-    cursor: pointer;
+    cursor: grab;
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    min-height: 48px;
-    padding: 0 0.9rem;
-    font-size: 0.85rem;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 26px;
+    min-height: 46vh;
+    padding: 0.9rem 0;
+    font-size: 0.72rem;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text);
     white-space: nowrap;
+    box-shadow: inset -2px 0 0 var(--accent);
+}
+
+/* Shut, the tab is a slim smooth line with a vertical label. */
+#set-switcher .set-tab-text {
+    writing-mode: vertical-rl;
+    letter-spacing: 0.3em;
+}
+
+#set-switcher[open] > summary {
+    flex-direction: row;
+    width: auto;
+    min-height: 48px;
+    padding: 0 0.9rem;
+    font-size: 0.85rem;
+    box-shadow: none;
+}
+
+#set-switcher[open] .set-tab-text {
+    writing-mode: horizontal-tb;
+    letter-spacing: 0.06em;
 }
 
 #set-switcher > summary::-webkit-details-marker {
@@ -1593,7 +2049,7 @@ ul.plain li {
 
 #set-switcher > summary::before {
     content: "▸";
-    margin-right: 0.4rem;
+    margin: 0;
     flex-shrink: 0;
     color: var(--muted);
 }
@@ -1604,6 +2060,11 @@ ul.plain li {
 
 #set-switcher[open] > summary {
     border-bottom: 1px solid var(--border-soft);
+    background: var(--surface-2);
+}
+
+#set-switcher > summary:hover {
+    background: var(--surface-2);
 }
 
 #set-switcher .set-panel {
@@ -1611,6 +2072,8 @@ ul.plain li {
     flex-direction: column;
     gap: 0.7rem;
     padding: 0.8rem 0.9rem;
+    max-height: calc(100dvh - 12rem);
+    overflow-y: auto;
 }
 
 #set-switcher .set-current {
@@ -1661,12 +2124,29 @@ ul.plain li {
     padding: 0.45rem 0.5rem;
     border: 1px solid var(--border-soft);
     border-radius: var(--r-sm);
-    background: none;
+    background: var(--surface-2);
     color: var(--muted);
     font: inherit;
     font-size: 0.85rem;
     font-weight: 700;
     cursor: pointer;
+}
+
+.marker-filter button:hover {
+    color: var(--text);
+    border-color: var(--border);
+}
+
+.grade-search {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.grade-search select {
+    flex: 1;
+    min-height: 44px;
 }
 
 .marker-filter button[aria-pressed="true"] {
@@ -1722,18 +2202,19 @@ ul.plain li {
     flex: 1;
     text-align: center;
     padding: 0.3rem 0.5rem;
-    border: 1px solid var(--border-soft);
+    background: var(--surface);
+    border: 1px solid var(--border);
     border-radius: var(--r-sm);
-    color: var(--muted);
+    color: var(--text);
     font-size: 0.78rem;
     font-weight: 700;
     text-decoration: none;
 }
 
 .admin-topbar a.on {
-    background: var(--surface);
-    border-color: var(--border);
-    color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--accent);
+    color: var(--accent);
 }
 
 .admin-layout {
@@ -2022,9 +2503,37 @@ ul.plain li {
     }
 }
 
+/* Your row shares the summary-line highlight, with an accent edge. */
 .board tr.me td {
-    color: var(--sand);
+    background: var(--me-bg);
     font-weight: 700;
+}
+
+.board tr.me td:first-child {
+    box-shadow: inset var(--bw) 0 0 var(--accent);
+}
+
+/* The leader's row stands apart: bold with brass points. */
+.board tbody tr.winner td {
+    font-weight: 800;
+}
+
+.board tbody tr.winner td:last-child {
+    color: var(--star);
+}
+
+.crown {
+    color: var(--star);
+    margin-right: 0.15rem;
+}
+
+/* Long names ellipsize inside the fixed table instead of forcing
+   sideways scroll on narrow phones. */
+.board .user-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .board-toggle {
@@ -2047,9 +2556,73 @@ ul.plain li {
 .boards h4 {
     margin: 1.1rem 0 0.5rem;
     font-size: 0.78rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
     color: var(--muted);
+}
+
+/* Tape-colour swatch beside the grade pill: the hold colour as a
+   chip next to the climb's name (or colour, when unnamed). The
+   fill is climb data, not theme; the shape follows the theme. */
+.colour-dot {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    margin: 0 0.15rem;
+    vertical-align: baseline;
+    border: var(--bw) solid var(--border);
+    border-radius: var(--dot-radius);
+}
+
+/* Stat rows get breathing room: taller rows with a wrapping value
+   side so pill, swatch and name never crush together. */
+.stat-list li {
+    padding: 0.9rem 0;
+    gap: 1rem;
+}
+
+.stat-list li > span:last-child {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.15rem 0.45rem;
+    text-align: right;
+}
+
+/* The totals row closes the stat list with a stronger rule. */
+.stat-list .stat-total {
+    font-weight: 800;
+    border-top: var(--bw) solid var(--border);
+}
+
+/* Stat climbs open the map through GET forms — plain-text buttons,
+   never links, so rows stay quiet until hovered. */
+.stat-go {
+    display: inline;
+    margin: 0;
+}
+
+.stat-go button {
+    background: none;
+    border: 0;
+    padding: 0.1rem 0.35rem;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+    border-radius: 0.35rem;
+}
+
+.stat-go button:hover {
+    background: var(--surface-2);
+}
+
+.archive-back {
+    margin: 0.6rem 0 0;
+}
+
+.archive-back .btn {
+    width: 100%;
 }
 
 .archive-note {
@@ -2067,8 +2640,9 @@ ul.plain li {
 .past-boards {
     margin-top: 1rem;
     background: var(--surface);
-    border: 1px solid var(--border);
+    border: var(--bw) solid var(--border);
     border-radius: var(--r-md);
+    box-shadow: var(--shadow);
     padding: 0.5rem 1.1rem 1rem;
 }
 
@@ -2079,8 +2653,8 @@ ul.plain li {
     cursor: pointer;
     font-weight: 700;
     font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
     color: var(--muted);
 }
 
@@ -2132,16 +2706,6 @@ ul.plain li {
     font-weight: 700;
 }
 
-.board .rank-list a {
-    color: var(--text);
-    text-decoration: none;
-}
-
-.board .rank-list a:hover {
-    color: var(--link);
-    text-decoration: underline;
-}
-
 /* Sends-by-grade bar chart: bars wear the circuit colours. */
 .graph {
     display: flex;
@@ -2159,6 +2723,7 @@ ul.plain li {
 .graph-grade {
     flex: 0 0 2.2rem;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
 }
 
 .graph-track {
@@ -2167,6 +2732,13 @@ ul.plain li {
     height: 1.1rem;
     border: 1px solid var(--border-soft);
     border-radius: var(--r-sm);
+    overflow: hidden;
+}
+
+.graph-count {
+    flex: 0 0 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 .gbar {

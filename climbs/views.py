@@ -2,6 +2,7 @@ import json
 
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import user_passes_test
+from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Avg, Count, Sum
 from django.http import JsonResponse
@@ -18,12 +19,17 @@ from .models import (
     ClimbSet,
     Comment,
     GradeSuggestion,
+    NewsPost,
     Rating,
     TAG_CHOICES,
     TAG_VALUES,
     WALL_CHOICES,
+    TAGS_BY_GRADE,
     grade_number,
+    grades_for_tag,
+    tag_supports_grade,
 )
+from .scoring import MYSTERY_FIXED_POINTS
 
 MAP_WIDTH = 256    # update to match your tightened viewBox width
 MAP_HEIGHT = 512   # update to match your tightened viewBox height
@@ -157,6 +163,8 @@ def _set_stats(climb_set):
     for s in GradeSuggestion.objects.filter(
             climb__climb_set=climb_set).values("climb_id",
                                                "suggested_grade"):
+        if by_id[s["climb_id"]].tag == 'mystery':
+            continue
         target = grade_number(by_id[s["climb_id"]].grade)
         number = grade_number(s["suggested_grade"])
         if target is None or number is None:
@@ -175,11 +183,15 @@ def _set_stats(climb_set):
     sends_by_grade_tag = {}
     for a in tries:
         climb = by_id[a["climb_id"]]
-        sends_by_grade[climb.grade] = sends_by_grade.get(climb.grade, 0) + 1
+        # Mystery sends bucket under '?' so the hidden grade can't be
+        # read back out of the per-grade counts before the reveal.
+        grade_key = '?' if climb.tag == 'mystery' else climb.grade
+        sends_by_grade[grade_key] = sends_by_grade.get(grade_key, 0) + 1
         tag = climb.tag if climb.tag in TAG_VALUES else 'mystery'
-        key = (climb.grade, tag)
+        key = (grade_key, tag)
         sends_by_grade_tag[key] = sends_by_grade_tag.get(key, 0) + 1
-    grades = sorted({c.grade for c in climbs}, key=grade_number)
+    grades = sorted({('?' if c.tag == 'mystery' else c.grade) for c in climbs},
+                    key=lambda g: (grade_number(g) is None, grade_number(g) or 0))
     top = max([sends_by_grade.get(g, 0) for g in grades] + [0])
 
     def segments_for(grade):
@@ -275,8 +287,23 @@ def leaderboard_view(request):
     return render(request, "climbs/leaderboard.html", {"walls": walls})
 
 
+def _tag_grade_error(tag, grade):
+    """400 message when a tag/grade pair leaves its circuit band, or
+    None when the pair is allowed (mystery allows any grade)."""
+    if tag not in TAG_VALUES:
+        return "Unknown tag."
+    if grade not in GRADE_VALUES:
+        return "Unknown grade."
+    if not tag_supports_grade(tag, grade):
+        allowed = ", ".join(grades_for_tag(tag))
+        return f"That tag covers grades {allowed}."
+    return None
+
+
 def _grade_vote_counts(climb):
     """Split grade suggestions into harder/at/softer vs the set grade."""
+    if climb.tag == 'mystery':
+        return {"harder": 0, "at": 0, "softer": 0, "total": 0}
     target = grade_number(climb.grade)
     counts = {"harder": 0, "at": 0, "softer": 0}
     for suggested in climb.grade_suggestions.values_list("suggested_grade", flat=True):
@@ -327,8 +354,10 @@ def climb_detail_api(request, climb_id):
     return JsonResponse({
         "id": climb.id,
         "name": climb.name,
-        "grade": climb.grade,
+        "grade": climb.display_grade,
         "tag": climb.tag,
+        "is_mystery": climb.is_mystery,
+        "mystery_points": MYSTERY_FIXED_POINTS,
         "colour": climb.colour,
         "wall": climb.wall,
         "wall_display": climb.get_wall_display(),
@@ -339,7 +368,7 @@ def climb_detail_api(request, climb_id):
         "ascent_count": climb.ascents.count(),
         "recent_ascents": [
             {"user": a.user.username, "tries": a.tries, "points": a.points}
-            for a in climb.ascents.select_related("user").order_by("-id")[:3]
+            for a in climb.ascents.select_related("user").order_by("-id")
         ],
         "grade_votes": _grade_vote_counts(climb),
         "comments": comments,
@@ -353,7 +382,10 @@ def climber_api(request, username):
     user = get_object_or_404(get_user_model(), username=username)
     totals = user.ascents.aggregate(sends=Count("id"), points=Sum("points"))
     best = None
-    for grade in user.ascents.values_list("climb__grade", flat=True):
+    # Mystery climbs stay out: their hidden grade must not leak
+    # through a climber's "best" line before the reveal.
+    for grade in user.ascents.exclude(
+            climb__tag="mystery").values_list("climb__grade", flat=True):
         number = grade_number(grade)
         if number is not None and (best is None or number > best):
             best = number
@@ -459,6 +491,11 @@ def grade_vote_api(request, climb_id):
     if denied:
         return denied
     climb = get_object_or_404(Climb, id=climb_id)
+    if climb.tag == 'mystery':
+        return JsonResponse(
+            {"error": "Mystery climbs can't be voted harder or softer "
+                      "until their grade is revealed."},
+            status=400)
     try:
         suggested = json.loads(request.body).get("suggested_grade")
     except (ValueError, TypeError, json.JSONDecodeError):
@@ -670,7 +707,12 @@ def climb_create_api(request):
         return JsonResponse({"error": "Invalid data."}, status=400)
     wall = data.get("wall")
     grade = data.get("grade")
-    tag = data.get("tag", "white")
+    tag = data.get("tag")
+    if tag is None and grade in GRADE_VALUES:
+        # Grade-only posts keep working: wear the grade's own band.
+        tag = TAGS_BY_GRADE[grade][0]
+    if tag is None:
+        tag = "white"
     climb_set = None
     if data.get("climb_set") is not None:
         # Placing straight into a set from the inspector: the set's
@@ -682,10 +724,9 @@ def climb_create_api(request):
         wall = climb_set.wall
     if wall not in WALL_VALUES:
         return JsonResponse({"error": "Unknown wall."}, status=400)
-    if grade not in GRADE_VALUES:
-        return JsonResponse({"error": "Unknown grade."}, status=400)
-    if tag not in TAG_VALUES:
-        return JsonResponse({"error": "Unknown tag."}, status=400)
+    pair_error = _tag_grade_error(tag, grade)
+    if pair_error:
+        return JsonResponse({"error": pair_error}, status=400)
     try:
         x = float(data["x_percent"])
         y = float(data["y_percent"])
@@ -713,12 +754,15 @@ def climb_update_api(request, climb_id):
         data = json.loads(request.body)
     except (ValueError, TypeError, json.JSONDecodeError):
         return JsonResponse({"error": "Invalid data."}, status=400)
-    if "grade" in data and data["grade"] not in GRADE_VALUES:
-        return JsonResponse({"error": "Unknown grade."}, status=400)
     if "wall" in data and data["wall"] not in WALL_VALUES:
         return JsonResponse({"error": "Unknown wall."}, status=400)
-    if "tag" in data and data["tag"] not in TAG_VALUES:
-        return JsonResponse({"error": "Unknown tag."}, status=400)
+    if "grade" in data or "tag" in data:
+        # Revealing a mystery climb is just an update: set its real
+        # tag and grade together and voting unlocks on its own.
+        pair_error = _tag_grade_error(
+            data.get("tag", climb.tag), data.get("grade", climb.grade))
+        if pair_error:
+            return JsonResponse({"error": pair_error}, status=400)
     for field in ("x_percent", "y_percent"):
         # Marker drags send numbers; anything else would blow up on
         # save, so reject it here with a 400 instead of a 500.
@@ -771,6 +815,62 @@ def climb_set_start_api(request):
     climb_set = ClimbSet.objects.create(
         wall=wall, label=label, is_active=first)
     return JsonResponse({"id": climb_set.id, "label": climb_set.label})
+
+
+NEWS_PER_PAGE = 5
+
+
+def news_view(request):
+    """Gym news, newest first, five to a page with buttons back."""
+    posts = NewsPost.objects.select_related("author").all()
+    page = Paginator(posts, NEWS_PER_PAGE).get_page(request.GET.get("page"))
+    return render(request, "climbs/news.html", {"page": page})
+
+
+def _news_payload(request):
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return None, JsonResponse({"error": "Invalid data."}, status=400)
+    title = (data.get("title") or "").strip()
+    body = (data.get("body") or "").strip()
+    if not title or not body:
+        return None, JsonResponse(
+            {"error": "Title and body required."}, status=400)
+    if len(title) > 200 or len(body) > 5000:
+        return None, JsonResponse(
+            {"error": "Title or body too long."}, status=400)
+    return {"title": title, "body": body}, None
+
+
+@user_passes_test(staff_check)
+@require_http_methods(["POST"])
+def news_create_api(request):
+    fields, error = _news_payload(request)
+    if error:
+        return error
+    post = NewsPost.objects.create(author=request.user, **fields)
+    return JsonResponse({"id": post.id})
+
+
+@user_passes_test(staff_check)
+@require_http_methods(["POST"])
+def news_update_api(request, post_id):
+    post = get_object_or_404(NewsPost, id=post_id)
+    fields, error = _news_payload(request)
+    if error:
+        return error
+    post.title = fields["title"]
+    post.body = fields["body"]
+    post.save(update_fields=["title", "body"])
+    return JsonResponse({"status": "ok"})
+
+
+@user_passes_test(staff_check)
+@require_http_methods(["POST"])
+def news_delete_api(request, post_id):
+    NewsPost.objects.filter(id=post_id).delete()
+    return JsonResponse({"status": "deleted"})
 
 
 class SignupView(CreateView):

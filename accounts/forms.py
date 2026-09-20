@@ -52,7 +52,10 @@ class ProfileForm(forms.ModelForm):
 
     def clean_avatar(self):
         avatar = self.cleaned_data.get("avatar")
-        if not avatar:
+        # Only fresh uploads are validated: with no new file the
+        # field carries the stored file, which may no longer exist
+        # on disk — touching it must not 500 the profile save.
+        if not avatar or not isinstance(avatar, UploadedFile):
             return avatar
         if avatar.size > MAX_AVATAR_BYTES:
             raise forms.ValidationError("Image must be under 5 MB.")
@@ -78,7 +81,10 @@ class ProfileForm(forms.ModelForm):
         if commit:
             user.save()
         new = user.avatar.name if user.avatar else None
-        if old and old != new:
+        if old and old != new and user.avatar.storage.exists(old):
+            # The file may already be gone (e.g. the volume was
+            # wiped while the database row survived): deleting a
+            # missing file must not 500 the profile save.
             user.avatar.storage.delete(old)
         return user
 

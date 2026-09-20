@@ -81,6 +81,10 @@ class ProfilePageTests(TestCase):
         self.assertContains(response, "Delete account")
         self.assertContains(response, '<span class="stat-num">0</span>')
         self.assertContains(response, "Leaderboard")
+        # One solid sheet, not a stack of cards.
+        self.assertContains(response, "profile-sheet")
+        self.assertEqual(
+            response.content.decode().count('<section class="card'), 1)
 
     def test_profile_hides_progress_graph(self):
         # The Progress graph lives on Full stats only; the profile
@@ -201,13 +205,29 @@ class ProfilePageTests(TestCase):
         # No Django Currently/Clear/Change widget alongside it.
         self.assertNotContains(response, "avatar-clear")
 
+    def test_file_input_cannot_shift_mobile_layout(self):
+        # The native input lives fully off-canvas at 16px type:
+        # an in-flow 1px input makes mobile browsers scroll/zoom
+        # the page to it when the device picker opens.
+        from django.contrib.staticfiles import finders
+
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        block = css.split(
+            '.avatar-pick-row input[type="file"]')[1].split("}")[0]
+        self.assertIn("position: fixed", block)
+        self.assertIn("-9999px", block)
+        self.assertIn("font-size: 16px", block)
+
     def test_profile_has_theme_toggle(self):
         self.make_user("themer")
         self.client.force_login(User.objects.get(username="themer"))
         response = self.client.get(reverse("accounts:profile"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "theme-toggle")
-        for theme in ("abyss", "blueprint", "ember", "forest", "clay"):
+        for theme in ("abyss", "blueprint", "ember", "forest", "clay",
+                      "modern", "midnight"):
             self.assertContains(response, f'data-theme-set="{theme}"')
         self.assertContains(response, "summit-theme")
 
@@ -318,6 +338,43 @@ class ProfilePageTests(TestCase):
                 self.assertNotEqual(me.avatar.path, old_path)
                 self.assertFalse(os.path.exists(old_path))
 
+    def test_avatar_urls_are_absolute(self):
+        # Avatar URLs must work from every page: a relative media
+        # URL only resolves on the site root and 404s everywhere
+        # else (profile, leaderboard, climber card).
+        import tempfile
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+
+        me = self.make_user("absolute")
+        png = SimpleUploadedFile("a.png", b"\x89PNG\r\n\x1a\n" + b"\x01" * 64,
+                                 content_type="image/png")
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                self.client.force_login(me)
+                self.client.post(
+                    reverse("accounts:profile-update"),
+                    {"username": "absolute", "avatar": png})
+                me.refresh_from_db()
+                self.assertTrue(me.avatar.url.startswith("/media/"))
+                shown = self.client.get(reverse("accounts:profile"))
+                self.assertContains(shown, me.avatar.url)
+
+    def test_remove_missing_avatar_file_does_not_500(self):
+        # The database row can outlive the file (wiped volume):
+        # removing or replacing a ghost avatar must still save.
+        me = self.make_user("ghost")
+        me.avatar = "avatars/gone.png"
+        me.save()
+        self.client.force_login(me)
+        response = self.client.post(
+            reverse("accounts:profile-update"),
+            {"username": "ghost", "remove_avatar": "true"})
+        self.assertEqual(response.status_code, 302)
+        me.refresh_from_db()
+        self.assertFalse(bool(me.avatar))
+
     def test_password_change_needs_current_password(self):
         self.make_user("pw", password="old-pass-123")
         self.client.force_login(User.objects.get(username="pw"))
@@ -353,3 +410,29 @@ class ProfilePageTests(TestCase):
         self.assertContains(good, "deleted")
         self.assertFalse(User.objects.filter(username="doomed").exists())
         self.assertNotIn("_auth_user_id", self.client.session)
+
+
+class PasswordPeekTests(TestCase):
+    def test_every_password_field_gets_an_eye(self):
+        # The peek enhancer ships in the base template, so login,
+        # signup and the profile's password forms all grow a toggle:
+        # fields stay type=password, the script and its styles load.
+        from django.contrib.staticfiles import finders
+
+        User.objects.create_user(username="peeker",
+                                 email="peeker@example.com",
+                                 password="test-pass-123")
+        self.client.force_login(User.objects.get(username="peeker"))
+        for url in (reverse("login"), reverse("signup"),
+                    reverse("accounts:profile")):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'type="password"')
+                self.assertContains(response, "pw-peek")
+                self.assertContains(response, "Show password")
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        self.assertIn(".pw-wrap", css)
+        self.assertIn(".pw-peek", css)

@@ -64,7 +64,7 @@
         <div id="map-viewport">
             <div id="map-stack">
                 <div id="map-content">
-                    <img src="{% static 'climbs/wall.svg' %}" id="wall-img" alt="Gym wall map">
+                    {% include "climbs/_wall.html" %}
                     <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
                          xmlns="http://www.w3.org/2000/svg">
                         {% for climb in climbs %}
@@ -90,18 +90,19 @@
     <h2 id="panel-title">New climb</h2>
     <label>Name (optional)</label>
     <input type="text" id="f-name">
-    <label>Proposed grade</label>
-    <select id="f-grade">
-        {% for g in grade_choices %}
-            <option value="{{ g }}">{{ g }}</option>
-        {% endfor %}
-    </select>
     <label>Tag</label>
     <select id="f-tag">
         {% for slug, label in tag_choices %}
             <option value="{{ slug }}">{{ label }}</option>
         {% endfor %}
     </select>
+    <label>Proposed grade</label>
+    <select id="f-grade">
+        {% for g in grade_choices %}
+            <option value="{{ g }}">{{ g }}</option>
+        {% endfor %}
+    </select>
+    <p id="f-tag-hint" class="muted" hidden></p>
     <label>Hold colour</label>
     <div id="f-swatches"></div>
     <div class="colour-custom"><input type="color" id="f-picker" value="#ff0000" aria-label="Custom hold colour"><span>Custom</span></div>
@@ -187,35 +188,52 @@ function svgPoint(evt) {
     return pt.matrixTransform(svg.getScreenCTM().inverse());
 }
 
-// The grade picks the tag shortlist: each grade allows its own band
-// plus the next one up (a V5 wears blue or yellow, never green).
-// The ends of the scale narrow to one: V0 is always white, V7 is
-// always orange, and project starts at V8.
-const TAG_BY_GRADE = {0: ['white'], 1: ['white', 'black'],
-    2: ['red', 'green'], 3: ['red', 'green'], 4: ['green', 'blue'],
-    5: ['blue', 'yellow'], 6: ['yellow', 'orange'],
-    7: ['orange'], 8: ['project'], 9: ['project'],
-    10: ['project']};
-const TAG_LABELS = {};
-document.querySelectorAll('#f-tag option').forEach(o => TAG_LABELS[o.value] = o.textContent);
+// The tag picks the grade shortlist — pick the tape first, then the
+// grade it stands for. White is V0–V1, black V1–V2, red V2–V3, green
+// V3–V4, blue V4–V5, yellow V5–V6, orange V6–V7, project V8+. Mystery
+// can be any grade: its grade stays hidden and scores flat points
+// until the setters reveal it the following week.
+const GRADES_BY_TAG = {white: ['V0', 'V1'], black: ['V1', 'V2'],
+    red: ['V2', 'V3'], green: ['V3', 'V4'], blue: ['V4', 'V5'],
+    yellow: ['V5', 'V6'], orange: ['V6', 'V7'],
+    project: ['V8', 'V9', 'V10'],
+    mystery: ['V0', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8', 'V9', 'V10']};
+const GRADE_LABELS = {};
+document.querySelectorAll('#f-grade option').forEach(o => GRADE_LABELS[o.value] = o.textContent);
 
-function allowedTags(grade) {
-    const m = /^V(\d+)$/.exec(grade || '');
-    const n = m ? parseInt(m[1], 10) : NaN;
-    return TAG_BY_GRADE[n] || ['mystery'];
+function allowedGrades(tag) {
+    return GRADES_BY_TAG[tag] || GRADES_BY_TAG.mystery;
 }
 
-function setTagOptions(grade, prefer) {
-    const allowed = allowedTags(grade);
-    const sel = document.getElementById('f-tag');
+function paintTagHint(tag) {
+    const hint = document.getElementById('f-tag-hint');
+    if (!hint) return;
+    if (tag === 'mystery') {
+        hint.hidden = false;
+        hint.textContent = 'Mystery: any grade, hidden till next week. Flat 300 pts, no harder/softer votes.';
+    } else if (tag === 'project') {
+        hint.hidden = false;
+        hint.textContent = 'Project: V8 and up.';
+    } else {
+        hint.hidden = true;
+        hint.textContent = '';
+    }
+}
+
+function setGradeOptions(tag, prefer) {
+    const allowed = allowedGrades(tag);
+    const sel = document.getElementById('f-grade');
+    const current = sel.value;
     sel.innerHTML = '';
-    allowed.forEach(t => {
+    allowed.forEach(g => {
         const o = document.createElement('option');
-        o.value = t;
-        o.textContent = TAG_LABELS[t] || t;
+        o.value = g;
+        o.textContent = GRADE_LABELS[g] || g;
         sel.appendChild(o);
     });
-    sel.value = allowed.includes(prefer) ? prefer : allowed[0];
+    sel.value = allowed.includes(prefer) ? prefer
+        : (allowed.includes(current) ? current : allowed[0]);
+    paintTagHint(tag);
 }
 
 // Hold colours: tap a swatch or pick anything custom. The stored
@@ -267,9 +285,23 @@ document.getElementById('f-picker').addEventListener('input', (e) => {
     setColour(e.target.value);
 });
 
+document.getElementById('f-tag').addEventListener('change', (e) => {
+    setGradeOptions(e.target.value,
+        document.getElementById('f-grade').value);
+});
+
 document.getElementById('f-grade').addEventListener('change', (e) => {
-    setTagOptions(e.target.value,
-        document.getElementById('f-tag').value);
+    // A grade outside the picked tag's band pulls the tag along to
+    // the grade's own band instead of saving a mismatched pair.
+    const grade = e.target.value;
+    const tagSel = document.getElementById('f-tag');
+    if (!allowedGrades(tagSel.value).includes(grade)) {
+        const bands = {V0: 'white', V1: 'white', V2: 'black', V3: 'red',
+            V4: 'green', V5: 'blue', V6: 'yellow', V7: 'orange',
+            V8: 'project', V9: 'project', V10: 'project'};
+        if (tagSel.value !== 'mystery' && bands[grade]) tagSel.value = bands[grade];
+    }
+    paintTagHint(tagSel.value);
 });
 
 function openPanel(id, x, y, climb = {}) {
@@ -277,8 +309,8 @@ function openPanel(id, x, y, climb = {}) {
     pendingCoords = { x_percent: x, y_percent: y };
     document.getElementById('panel-title').textContent = id ? "Edit climb" : "New climb";
     document.getElementById('f-name').value = climb.name || "";
-    document.getElementById('f-grade').value = climb.grade || "V0";
-    setTagOptions(document.getElementById('f-grade').value, climb.tag || "");
+    document.getElementById('f-tag').value = climb.tag || "white";
+    setGradeOptions(document.getElementById('f-tag').value, climb.grade || "");
     renderSwatches(climb.colour || "red");
     document.getElementById('f-wall').value = climb.wall || INSPECTOR_WALL;
     document.getElementById('f-active').checked = !id || climb.active !== "0";
@@ -324,20 +356,28 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') disarm();
 });
 
-// Click empty map area = place (when armed) or a free new climb.
-// A pan/drag that ends on the wall is not a placement: ignore
-// clicks whose pointer travelled since pointerdown.
+// Tap empty map area = place (when armed) or a free new climb.
+// Tap detection runs on pointerup, not click: touch browsers and
+// the pan/zoom layer can swallow click events, while pointerup
+// reliably fires. A pan/drag that ends on the wall is not a
+// placement: taps that moved far or were held long are ignored.
 let wallDown = null;
 svg.addEventListener('pointerdown', (e) => {
-    wallDown = {x: e.clientX, y: e.clientY};
+    wallDown = {x: e.clientX, y: e.clientY, t: Date.now()};
 });
-svg.addEventListener('click', (e) => {
-    if (e.target.tagName === 'circle') return;
-    if (wallDown && Math.hypot(e.clientX - wallDown.x, e.clientY - wallDown.y) > 8) {
+svg.addEventListener('pointercancel', () => {
+    wallDown = null;
+});
+svg.addEventListener('pointerup', (e) => {
+    if (e.target.tagName === 'circle') {
         wallDown = null;
         return;
     }
+    if (!wallDown) return;
+    const moved = Math.hypot(e.clientX - wallDown.x, e.clientY - wallDown.y);
+    const held = Date.now() - wallDown.t;
     wallDown = null;
+    if (moved > 12 || held > 600) return;
     const p = svgPoint(e);
     if (armedSet) {
         pendingSet = armedSet;

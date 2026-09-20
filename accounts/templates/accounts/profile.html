@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="narrow">
-    <section class="card">
+    <section class="card profile-sheet">
         <div class="profile-head">
             {% if user.avatar %}
                 <img src="{{ user.avatar.url }}" alt="Your profile picture" class="avatar-lg">
@@ -21,81 +21,83 @@
             <div><span class="stat-num">{{ total_points }}</span><span class="stat-label">pts</span></div>
         </div>
         <p class="stats-link"><a class="btn btn-md btn-secondary" href="{% url 'accounts:stats' %}">Full stats</a></p>
-    </section>
 
-    <section class="card">
-        <h3>Leaderboard</h3>
-        {% if rank_lines %}
-            <ul class="plain rank-list">
-                {% for display, rank in rank_lines %}
-                    <li><span>{{ display }}</span>
-                        {% if rank.position %}
-                            <span class="rank-score">#{{ rank.position }} of {{ rank.of }} · {{ rank.points }} pts</span>
-                        {% else %}
-                            <span class="muted">unranked</span>
-                        {% endif %}
-                    </li>
-                {% endfor %}
-            </ul>
-        {% else %}
-            <p class="muted">No boards yet — log a send to join.</p>
-        {% endif %}
-    </section>
-
-    <section class="card">
-        <h3>Display</h3>
-        <p class="muted">Theme applies instantly and is saved on this device.</p>
-        <div class="theme-toggle" role="group" aria-label="Colour theme">
-            <button type="button" class="btn btn-md theme-btn" data-theme-set="abyss" aria-pressed="true">Abyss</button>
-            <button type="button" class="btn btn-md theme-btn" data-theme-set="blueprint" aria-pressed="false">Blueprint</button>
-            <button type="button" class="btn btn-md theme-btn" data-theme-set="ember" aria-pressed="false">Ember</button>
-            <button type="button" class="btn btn-md theme-btn" data-theme-set="forest" aria-pressed="false">Forest</button>
-            <button type="button" class="btn btn-md theme-btn" data-theme-set="clay" aria-pressed="false">Clay</button>
+        <div class="sheet-section">
+            <h3>Leaderboard</h3>
+            {% if rank_lines %}
+                <ul class="plain rank-list">
+                    {% for display, rank in rank_lines %}
+                        <li><span>{{ display }}</span>
+                            {% if rank.position %}
+                                <span class="rank-score">#{{ rank.position }} of {{ rank.of }} · {{ rank.points }} pts</span>
+                            {% else %}
+                                <span class="muted">unranked</span>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="muted">No boards yet — log a send to join.</p>
+            {% endif %}
         </div>
-    </section>
 
-    <section class="card">
-        <h3>Profile</h3>
-        <form method="post" action="{% url 'accounts:profile-update' %}" enctype="multipart/form-data" id="profile-form">
-            {% csrf_token %}
-            <label for="id_username">Username</label>
-            {{ profile_form.username }}
-            <label for="id_avatar">Profile picture</label>
-            <div class="avatar-pick-row">
-                <label class="btn btn-md btn-secondary avatar-pick" for="id_avatar">Choose picture</label>
-                {{ profile_form.avatar }}
-                {{ profile_form.remove_avatar }}
-                <button type="button" class="btn btn-md btn-secondary avatar-unpick" id="avatar-remove"{% if user.avatar %} data-stored="1"{% else %} hidden{% endif %}>Remove photo</button>
+        <div class="sheet-section">
+            <h3>Display</h3>
+            <p class="muted">Theme applies instantly and is saved on this device.</p>
+            <div class="theme-toggle" role="group" aria-label="Colour theme">
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="abyss" aria-pressed="true">Abyss</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="blueprint" aria-pressed="false">Blueprint</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="ember" aria-pressed="false">Ember</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="forest" aria-pressed="false">Forest</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="clay" aria-pressed="false">Clay</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="modern" aria-pressed="false">Modern</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="midnight" aria-pressed="false">Midnight</button>
             </div>
-            <p class="muted" id="avatar-note">Square JPG, PNG or GIF — shrunk to 256px on your phone before upload.</p>
-            <button class="btn btn-md" type="submit">Save profile</button>
-        </form>
-    </section>
+        </div>
 
-    <section class="card">
-        <h3>Change password</h3>
-        <form method="post" action="{% url 'accounts:password-change' %}">
-            {% csrf_token %}
-            <label for="id_old_password">Current password</label>
-            {{ password_form.old_password }}
-            <label for="id_new_password1">New password</label>
-            {{ password_form.new_password1 }}
-            <label for="id_new_password2">Confirm new password</label>
-            {{ password_form.new_password2 }}
-            <button class="btn btn-md" type="submit">Change password</button>
-        </form>
-    </section>
+        <div class="sheet-section">
+            <h3>Profile</h3>
+            <form method="post" action="{% url 'accounts:profile-update' %}" enctype="multipart/form-data" id="profile-form">
+                {% csrf_token %}
+                <label for="id_username">Username</label>
+                {{ profile_form.username }}
+                <label for="id_avatar">Profile picture</label>
+                <div class="avatar-pick-row">
+                    <label class="btn btn-md btn-secondary avatar-pick" for="id_avatar">Choose picture</label>
+                    {{ profile_form.avatar }}
+                    {{ profile_form.remove_avatar }}
+                    <button type="button" class="btn btn-md btn-secondary avatar-unpick" id="avatar-remove"{% if user.avatar %} data-stored="1"{% else %} hidden{% endif %}>Remove photo</button>
+                </div>
+                <p class="muted" id="avatar-note">Square JPG, PNG or GIF — shrunk to 256px on your phone before upload.</p>
+                <button class="btn btn-md" type="submit">Save profile</button>
+            </form>
+        </div>
 
-    <section class="card danger">
-        <h3>Delete account</h3>
-        <p class="muted">Removes your profile, sends, ratings and comments. This can't be undone.</p>
-        <form method="post" action="{% url 'accounts:account-delete' %}">
-            {% csrf_token %}
-            <label for="id_password">Current password</label>
-            {{ delete_form.password }}
-            <label class="check">{{ delete_form.confirm }} {{ delete_form.confirm.label }}</label>
-            <button class="btn btn-md btn-danger" type="submit">Delete my account</button>
-        </form>
+        <div class="sheet-section">
+            <h3>Change password</h3>
+            <form method="post" action="{% url 'accounts:password-change' %}">
+                {% csrf_token %}
+                <label for="id_old_password">Current password</label>
+                {{ password_form.old_password }}
+                <label for="id_new_password1">New password</label>
+                {{ password_form.new_password1 }}
+                <label for="id_new_password2">Confirm new password</label>
+                {{ password_form.new_password2 }}
+                <button class="btn btn-md" type="submit">Change password</button>
+            </form>
+        </div>
+
+        <div class="sheet-section danger-zone">
+            <h3>Delete account</h3>
+            <p class="muted">Removes your profile, sends, ratings and comments. This can't be undone.</p>
+            <form method="post" action="{% url 'accounts:account-delete' %}">
+                {% csrf_token %}
+                <label for="id_password">Current password</label>
+                {{ delete_form.password }}
+                <label class="check">{{ delete_form.confirm }} {{ delete_form.confirm.label }}</label>
+                <button class="btn btn-md btn-danger" type="submit">Delete my account</button>
+            </form>
+        </div>
     </section>
 </div>
 {% endblock %}

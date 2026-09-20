@@ -6,8 +6,8 @@ from django.contrib.staticfiles import finders
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import Ascent, Climb, ClimbSet, Comment
-from .scoring import calculate_points
+from .models import Ascent, Climb, ClimbSet, Comment, NewsPost
+from .scoring import MYSTERY_FIXED_POINTS, calculate_points
 
 User = get_user_model()
 
@@ -46,7 +46,9 @@ class DetailApiTests(ClimbTestMixin, TestCase):
         self.assertEqual(data["comments"], [])
         self.assertFalse(data["viewer"]["authenticated"])
 
-    def test_recent_sends_limited_to_three_newest(self):
+    def test_detail_lists_every_sender_newest_first(self):
+        # The popup names everyone who sent it, newest first, with
+        # the tries and points each one earned.
         climb = self.make_climb(grade="V3")
         users = [self.make_user(f"recent{i}") for i in range(5)]
         for i, user in enumerate(users):
@@ -54,10 +56,13 @@ class DetailApiTests(ClimbTestMixin, TestCase):
                                  points=calculate_points("V3", 1))
         data = self.client.get(
             reverse("climbs:climb-detail", args=[climb.id])).json()
-        self.assertEqual(len(data["recent_ascents"]), 3)
+        self.assertEqual(len(data["recent_ascents"]), 5)
         self.assertEqual(
             [a["user"] for a in data["recent_ascents"]],
-            ["recent4", "recent3", "recent2"])
+            ["recent4", "recent3", "recent2", "recent1", "recent0"])
+        self.assertTrue(all(
+            a["points"] == calculate_points("V3", 1) and a["tries"] == 1
+            for a in data["recent_ascents"]))
 
     def test_detail_includes_viewer_state(self):
         user = self.make_user("viewer")
@@ -453,12 +458,21 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
         self.assertIn("border-radius: 50%", css)
 
     def test_tag_bands_narrow_at_the_ends(self):
-        # V0 is always white, V7 is always orange, project starts at V8.
+        # The tag picks the grade shortlist: white is V0-V1, black
+        # V1-V2, red V2-V3, green V3-V4, blue V4-V5, yellow V5-V6,
+        # orange V6-V7, project V8+. V2 offers black and red.
         staff = self.make_user("bands", staff=True)
         self.client.force_login(staff)
         response = self.client.get(reverse("climbs:climb-admin"))
-        self.assertContains(response, "0: ['white'], 1: ['white', 'black']")
-        self.assertContains(response, "7: ['orange'], 8: ['project']")
+        self.assertContains(response, "GRADES_BY_TAG")
+        self.assertContains(response, "white: ['V0', 'V1']")
+        self.assertContains(response, "black: ['V1', 'V2']")
+        self.assertContains(response, "red: ['V2', 'V3']")
+        self.assertContains(response, "green: ['V3', 'V4']")
+        self.assertContains(response, "blue: ['V4', 'V5']")
+        self.assertContains(response, "yellow: ['V5', 'V6']")
+        self.assertContains(response, "orange: ['V6', 'V7']")
+        self.assertContains(response, "project: ['V8', 'V9', 'V10']")
 
     def test_admin_markers_wear_text_halos(self):
         # Admin grade labels carry the same dark outline as the map.
@@ -675,10 +689,10 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
         power.grade_suggestions.create(user=users[1], suggested_grade="V5")
         response = self.client.get(reverse("climbs:leaderboard"))
         self.assertContains(response, "Best rated")
-        self.assertContains(response, "Power</a>")
+        self.assertContains(response, "Power</button>")
         self.assertContains(response, "5.0 (1)")
         self.assertContains(response, "Most popular")
-        self.assertContains(response, "Techy</a>")
+        self.assertContains(response, "Techy</button>")
         self.assertContains(response, "3 sends")
         self.assertContains(response, "Softest")
         self.assertContains(response, "2 softer")
@@ -689,7 +703,46 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
         self.assertContains(response, "Sends by grade")
         self.assertContains(response, "width:100%")
         self.assertContains(response, "width:33%")
-        self.assertContains(response, f"?climb={techy.id}")
+        # Stat climbs open the map through GET-form buttons, never
+        # hyperlinks: no ?climb= links anywhere on the boards.
+        self.assertNotContains(response, "?climb=")
+        self.assertContains(response, 'class="stat-go"')
+        self.assertContains(response, 'name="climb"')
+        self.assertContains(response, f'value="{techy.id}"')
+
+    def test_stats_collapse_empty_rows_and_swatch_unnamed(self):
+        # Sends but no ratings or votes: empty stat rows collapse
+        # instead of showing "—", unnamed climbs show a colour
+        # swatch instead of a raw hex code, and the graph lists
+        # only grades that actually have sends.
+        from climbs.models import ClimbSet
+        user = self.make_user("sparse")
+        sent = Climb.objects.create(
+            name="", grade="V2", tag="black", colour="#c9265f",
+            wall="main", climb_set=ClimbSet.active("main"),
+            x_percent=10, y_percent=10)
+        Climb.objects.create(
+            name="Untouched", grade="V5", tag="blue", colour="blue",
+            wall="main", climb_set=ClimbSet.active("main"),
+            x_percent=20, y_percent=20)
+        sent.ascents.create(user=user, tries=1,
+                            points=calculate_points("V2", 1))
+        response = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(response, "Most popular")
+        self.assertNotContains(response, "Best rated")
+        self.assertNotContains(response, "Softest")
+        self.assertNotContains(response, "Hardest")
+        self.assertNotContains(response, '<span class="muted">—</span>')
+        self.assertContains(response, 'class="colour-dot"')
+        self.assertContains(response, 'style="background:#c9265f"')
+        self.assertContains(response, "#c9265f</button>")
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        self.assertIn("--dot-radius", css)
+        self.assertContains(response, '<span class="graph-grade">V2</span>')
+        self.assertNotContains(
+            response, '<span class="graph-grade">V5</span>')
 
 
 class AdminApiTests(ClimbTestMixin, TestCase):
@@ -784,6 +837,133 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertEqual(climb.x_percent, 12.5)
         self.assertEqual(climb.y_percent, 44.0)
 
+    def test_tag_grade_pairs_follow_the_bands(self):
+        # V2 wears black or red — never white or green. Mystery takes
+        # any grade; project starts at V8.
+        staff = self.make_user("pairadmin", staff=True)
+        self.client.force_login(staff)
+        url = reverse("climbs:climb-create")
+        base = {"name": "Banded", "colour": "red", "wall": "main",
+                "x_percent": 5, "y_percent": 6}
+
+        def create(grade, tag):
+            return self.client.post(
+                url, json.dumps({"grade": grade, "tag": tag, **base}),
+                content_type="application/json")
+
+        self.assertEqual(create("V2", "black").status_code, 200)
+        self.assertEqual(create("V2", "red").status_code, 200)
+        bad_white = create("V2", "white")
+        self.assertEqual(bad_white.status_code, 400)
+        self.assertIn("V1", bad_white.json()["error"])
+        self.assertEqual(create("V2", "green").status_code, 400)
+        self.assertEqual(create("V5", "mystery").status_code, 200)
+        self.assertEqual(create("V7", "project").status_code, 400)
+        self.assertEqual(create("V8", "project").status_code, 200)
+        # Grade-only posts wear the grade's own band.
+        response = self.client.post(
+            url, json.dumps({"grade": "V5", "colour": "blue",
+                             "wall": "main",
+                             "x_percent": 1, "y_percent": 2}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            Climb.objects.get(id=response.json()["id"]).tag, "blue")
+        # Mismatched updates are rejected; matched ones land.
+        climb = Climb.objects.get(name="Banded", tag="black")
+        update_url = reverse("climbs:climb-update", args=[climb.id])
+        denied = self.client.post(
+            update_url, json.dumps({"grade": "V5"}),
+            content_type="application/json")
+        self.assertEqual(denied.status_code, 400)
+        ok = self.client.post(
+            update_url, json.dumps({"tag": "red", "grade": "V3"}),
+            content_type="application/json")
+        self.assertEqual(ok.status_code, 200)
+        climb.refresh_from_db()
+        self.assertEqual((climb.tag, climb.grade), ("red", "V3"))
+
+    def test_mystery_scores_flat_and_locks_votes(self):
+        mystery = Climb.objects.create(
+            name="Mystery", grade="V6", tag="mystery", colour="white",
+            wall="main", climb_set=ClimbSet.active("main"),
+            x_percent=10, y_percent=10)
+        flash = self.make_user("mflash")
+        grinder = self.make_user("mgrind")
+        for user, tries in ((flash, 1), (grinder, 5)):
+            self.client.force_login(user)
+            response = self.client.post(
+                reverse("climbs:climb-ascent", args=[mystery.id]),
+                json.dumps({"tries": tries}),
+                content_type="application/json")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["points"],
+                             MYSTERY_FIXED_POINTS)
+        # No harder/softer while the grade is hidden.
+        self.client.force_login(flash)
+        vote = self.client.post(
+            reverse("climbs:climb-grade", args=[mystery.id]),
+            json.dumps({"suggested_grade": "V6"}),
+            content_type="application/json")
+        self.assertEqual(vote.status_code, 400)
+        self.assertIn("Mystery", vote.json()["error"])
+        # The hidden grade reads back as '?' everywhere public.
+        detail = self.client.get(
+            reverse("climbs:climb-detail", args=[mystery.id])).json()
+        self.assertTrue(detail["is_mystery"])
+        self.assertEqual(detail["grade"], "?")
+        self.assertEqual(detail["mystery_points"], MYSTERY_FIXED_POINTS)
+        self.assertEqual(detail["grade_votes"]["total"], 0)
+        content = self.client.get(reverse("climbs:map")).content.decode()
+        pos = content.index(f'data-climb-id="{mystery.id}"')
+        self.assertIn(">?</text>", content[pos:pos + 900])
+        board = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(board, '<span class="graph-grade">?</span>')
+        # ...and it can't leak through a climber's best grade either.
+        easy = self.make_climb(name="Easy", grade="V2", wall="main")
+        easy.ascents.create(user=flash, tries=1,
+                            points=calculate_points("V2", 1))
+        card = self.client.get(
+            reverse("climbs:climber-detail", args=["mflash"])).json()
+        self.assertEqual(card["best_grade"], "V2")
+
+    def test_revealing_a_mystery_unlocks_voting(self):
+        mystery = Climb.objects.create(
+            name="Mystery", grade="V4", tag="mystery", colour="white",
+            wall="main", climb_set=ClimbSet.active("main"),
+            x_percent=10, y_percent=10)
+        staff = self.make_user("revealer", staff=True)
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("climbs:climb-update", args=[mystery.id]),
+            json.dumps({"tag": "green", "grade": "V4"}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        voter = self.make_user("revoter")
+        self.client.force_login(voter)
+        vote = self.client.post(
+            reverse("climbs:climb-grade", args=[mystery.id]),
+            json.dumps({"suggested_grade": "V5"}),
+            content_type="application/json")
+        self.assertEqual(vote.status_code, 200)
+        detail = self.client.get(
+            reverse("climbs:climb-detail", args=[mystery.id])).json()
+        self.assertFalse(detail["is_mystery"])
+        self.assertEqual(detail["grade"], "V4")
+        self.assertEqual(detail["grade_votes"]["harder"], 1)
+
+    def test_mystery_tag_is_horizontal_stripes(self):
+        # Five simple stripes: red, yellow, blue, green, purple.
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        block = css.split(".tag-mystery")[1].split("}")[0]
+        self.assertIn("to bottom", block)
+        for band in ("#b3402f", "#d9b62c", "#2978a0",
+                     "#43914e", "#6a5a9e"):
+            self.assertIn(band, block)
+        self.assertNotIn("#e6e4da", block)
+
     def test_grade_bar_segments_use_each_climbs_tag(self):
         # One grade, two tags: the bar splits into a red segment and
         # a green one, each wearing exactly its climbs' tag colour.
@@ -803,6 +983,26 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             response, '<span class="gbar tag-red" style="width:67%">')
         self.assertContains(
             response, '<span class="gbar tag-green" style="width:33%">')
+
+    def test_nav_marks_the_current_page(self):
+        # Each page highlights exactly one nav link (accent pill plus
+        # aria-current) so the active section is always visible.
+        for url_name, label in (("map", "Map"),
+                                ("leaderboard", "Leaderboard")):
+            with self.subTest(page=url_name):
+                content = self.client.get(
+                    reverse(f"climbs:{url_name}")).content.decode()
+                self.assertEqual(
+                    content.count('aria-current="page"'), 1)
+                pos = content.index('class="nav-link active"')
+                self.assertIn(label, content[pos:pos + 400])
+        staff = self.make_user("navactive", staff=True)
+        self.client.force_login(staff)
+        content = self.client.get(
+            reverse("climbs:climb-admin")).content.decode()
+        self.assertEqual(content.count('aria-current="page"'), 1)
+        pos = content.index('class="nav-link active"')
+        self.assertIn("Admin", content[pos:pos + 1200])
 
     def test_admin_button_shows_for_staff_only(self):
         admin_url = reverse("climbs:climb-admin")
@@ -879,9 +1079,9 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(
             response,
             f"{old.created_at.day} {old.created_at.strftime('%b %Y')}")
-        # The grade drives the tag shortlist; colours are picked.
-        self.assertContains(response, "TAG_BY_GRADE")
-        self.assertContains(response, "5: ['blue', 'yellow']")
+        # The tag drives the grade shortlist; colours are picked.
+        self.assertContains(response, "GRADES_BY_TAG")
+        self.assertContains(response, "blue: ['V4', 'V5']")
         self.assertContains(response, 'id="f-swatches"')
         self.assertContains(response, 'type="color"')
         selected = self.client.get(
@@ -890,6 +1090,18 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             selected, f'<g class="climb-marker" data-id="{old_climb.id}"')
         self.assertNotContains(
             selected, f'<g class="climb-marker" data-id="{new_climb.id}"')
+
+    def test_climb_panel_fits_small_screens(self):
+        # The bottom-docked edit panel caps itself to the viewport
+        # and scrolls inside, so it never runs off the top of a
+        # phone screen.
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        block = css.split("#climb-edit-panel")[1].split("}")[0]
+        self.assertIn("max-height", block)
+        self.assertIn("100dvh", block)
+        self.assertIn("overflow-y: auto", block)
 
     def test_admin_map_supports_zoom_for_fine_placement(self):
         # The admin wall zooms (wheel/pinch) so markers can be placed
@@ -1224,10 +1436,11 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertNotIn("background", popup_block)
         self.assertNotIn("color", popup_block)
 
-    def test_map_markers_are_uniform_with_sent_filter(self):
-        # Every marker renders the same dot and white grade; telling
-        # sent from unsent is the Sets panel filter's job, fed by the
-        # viewer's sent ids and remembered on the device.
+    def test_map_markers_show_sent_state_and_grade_search(self):
+        # Every climb always shows; the Show buttons only dim the
+        # other group, and a grade search narrows the wall. All of
+        # it is fed by the viewer's sent ids and remembered on
+        # the device.
         user = self.make_user("sender")
         sent = self.make_climb(name="Sent", grade="V4")
         unsent = self.make_climb(name="Fresh", grade="V0")
@@ -1239,20 +1452,26 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(response, 'fill="red"')
         content = response.content.decode()
         sent_pos = content.index(f'data-climb-id="{sent.id}"')
-        sent_window = content[sent_pos:sent_pos + 900]
+        sent_window = content[sent_pos:sent_pos + 1200]
         self.assertIn('class="climb-dot"', sent_window)
         self.assertIn('fill="#fff"', sent_window)
         self.assertIn('paint-order="stroke"', sent_window)
         self.assertNotIn('#3fa34d', content)
         self.assertNotIn('sent-halo', content)
         self.assertNotIn('sent-tick', content)
+        self.assertNotIn('sent-ring', content)
+        # Status only ever dims; nothing is hidden by it.
+        self.assertContains(response, "m.style.opacity")
         # The filter offers all/sent/unsent, knows this send, and
-        # persists the choice.
+        # persists the choice; grades are searchable per marker.
         self.assertContains(response, 'data-marker-filter="all"')
         self.assertContains(response, 'data-marker-filter="sent"')
         self.assertContains(response, 'data-marker-filter="unsent"')
         self.assertContains(response, f"new Set([{sent.id}])")
         self.assertContains(response, "summit-filter")
+        self.assertContains(response, "summit-grade")
+        self.assertContains(response, 'id="grade-filter"')
+        self.assertContains(response, f'data-grade="V4"')
         self.assertContains(response, "applyMarkerFilter")
         # Markers shrink a little when zoomed out (softer counter-scale).
         self.assertContains(response, "Math.pow(s, 0.55)")
@@ -1267,13 +1486,15 @@ class AdminApiTests(ClimbTestMixin, TestCase):
                       css.split(".climb-marker text")[1][:500])
 
     def test_sheet_copy_is_plain_spoken(self):
-        # No nag to rate first, and the grade question asks how the
-        # climb feels. The comments form sits in a padded inner box.
+        # No nag to rate first, and the grade question names the
+        # proposed grade and asks whether you agree. The comments
+        # form sits in a padded inner box.
         response = self.client.get(reverse("climbs:map"))
         self.assertContains(response, "No ratings yet.")
         self.assertNotContains(response, "tap a star")
         self.assertNotContains(response, "be the first")
-        self.assertContains(response, "What do you feel it is?")
+        self.assertContains(response, "This climb has been proposed")
+        self.assertContains(response, "do you agree?")
         self.assertNotContains(response, "What grade is it really?")
         self.assertContains(response, "comments-inner")
 
@@ -1315,12 +1536,15 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(response, 'id="set-switcher"')
         self.assertContains(response, "set-panel")
         self.assertContains(response, "set-tab-text")
+        # The tab pulls across: drag opens/shuts, a clean tap toggles.
+        self.assertContains(response, "Edge slider")
+        self.assertContains(response, "switcher.open = x > startX")
         css_path = finders.find("climbs/style.css")
         with open(css_path) as f:
             css = f.read()
         panel = css.split("#set-switcher {")[1].split("}")[0]
         self.assertIn("position: fixed", panel)
-        self.assertIn("right: 0", panel)
+        self.assertIn("left: 0", panel)
 
     def test_sheet_copy_is_trimmed(self):
         response = self.client.get(reverse("climbs:map"))
@@ -1358,8 +1582,8 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.make_climb()
         response = self.client.get(reverse("climbs:map"))
         content = response.content.decode()
-        layer = content[content.index('id="climb-layer"'):
-                        content.index('</svg>')]
+        start = content.index('id="climb-layer"')
+        layer = content[start:content.index('</svg>', start)]
         self.assertNotIn("#3fa34d", layer)
         self.assertIn("#ffffff", layer)
         self.assertContains(response, "new Set([])")
@@ -1378,10 +1602,19 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertIsNotNone(css_path)
         with open(css_path) as f:
             css = f.read()
-        # Five themes: abyss (deep trench cyan), blueprint,
-        # ember (amber), forest (green serif), clay (warm paper serif).
-        for theme in ("abyss", "blueprint", "ember", "forest", "clay"):
+        # Five sharp themes: abyss (deep trench cyan), blueprint,
+        # ember (amber), forest (green serif), clay (warm paper serif) —
+        # plus modern (soft light) and midnight (soft dark).
+        for theme in ("abyss", "blueprint", "ember", "forest", "clay",
+                      "modern", "midnight"):
             self.assertIn(f'[data-theme="{theme}"]', css)
+        # The modern pair is soft: smooth sans type, rounded corners.
+        modern = css.split('[data-theme="modern"]')[1].split("}")[0]
+        self.assertIn("system-ui", modern)
+        self.assertIn("--r-btn: 12px", modern)
+        midnight = css.split('[data-theme="midnight"]')[1].split("}")[0]
+        self.assertIn("system-ui", midnight)
+        self.assertIn("color-scheme: dark", midnight)
         self.assertIn("--font-body", css)
         self.assertIn("--font-display", css)
         self.assertNotIn("--font-mono", css)
@@ -1396,14 +1629,18 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         # Old palette fully retired: blue accent, slate borders, 999px pills.
         self.assertNotIn("#8ab4ff", css)
         self.assertNotIn("#2a2b3a", css)
-        self.assertNotIn("999px", css)
+        self.assertNotRegex(css, r"border-radius\s*:\s*999px")
         # Pre-overhaul abyss tokens are gone too.
         self.assertNotIn("#0c1014", css)
         self.assertNotIn("#4da3d8", css)
         response = self.client.get(reverse("climbs:map"))
         self.assertContains(response, "summit-theme")
         self.assertContains(response, "brand-mark")
-        self.assertContains(response, 'data-theme="blueprint"')
+        # Fresh visitors start on modern (midnight when the OS asks
+        # for dark); the no-JS shell matches the light default.
+        self.assertContains(response, 'data-theme="modern"')
+        self.assertContains(response, "(prefers-color-scheme: dark)")
+        self.assertContains(response, "dark ? 'midnight' : 'modern'")
 
     def test_background_tile_exists_and_is_wired(self):
         # Each theme brings its own generated grid tile; the old
@@ -1461,6 +1698,73 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertRegex(css,
                          r"\.climb-marker\s*\{[^}]*transition\s*:[^}]*filter")
 
+    def test_wall_artwork_is_stable_and_themed(self):
+        # The wall is inlined vector (an <img> rasterizes once, then
+        # smears as a bitmap under pinch-zoom): straight,
+        # low-precision geometry with no echo contour, colours per
+        # theme through variables.
+        import re
+        import xml.etree.ElementTree as ET
+        from pathlib import Path
+
+        partial = Path(__file__).parent / "templates" / "climbs" / "_wall.html"
+        body = partial.read_text()
+        # The header note must use {% comment %}: {# #} cannot span
+        # lines, so a multi-line note would leak onto the page as text.
+        # Beyond that the partial stays plain parseable SVG.
+        body = re.sub(r"{% comment %}.*?{% endcomment %}", "",
+                      body, flags=re.DOTALL)
+        self.assertNotIn("{%", body)
+        self.assertNotIn("{#", body)
+        root = ET.fromstring(body)
+        ids = [el.get("id") for el in root.iter()]
+        self.assertNotIn("path5", ids)
+        # Four fills tile the wall with no overlap, exactly one path
+        # draws every feature line, and one draws the frame.
+        for wanted in ("fill-body", "fill-upper-left", "fill-right-wall",
+                       "fill-top-right-box", "wall-lines", "frame"):
+            self.assertIn(wanted, ids)
+        self.assertEqual(ids.count("wall-lines"), 1)
+        # The data-space mapping is frozen: the overlay positions
+        # climbs in its own 256x512 viewBox, so the wall viewBox
+        # must never move under it.
+        self.assertIn('viewBox="0 0 164.42926 491.13571"', body)
+        # Two widths, defined once as variables: no per-path
+        # stroke-width attrs, a single near-opaque stroke on the one
+        # line path so neither side can thin against its backdrop, and
+        # zoom-proof strokes throughout.
+        self.assertNotIn("stroke-width=", body)
+        self.assertEqual(body.count("stroke-opacity"), 1)
+        self.assertEqual(body.count('vector-effect="non-scaling-stroke"'), 2)
+        numbers = []
+        for el in root.iter():
+            for attr in ("d", "x", "y", "width", "height"):
+                value = el.get(attr)
+                if value:
+                    numbers += re.findall(r"-?\d+(?:\.\d+)?", value)
+        self.assertTrue(numbers)
+        for raw in numbers:
+            self.assertEqual(float(raw), round(float(raw), 1), raw)
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(response, 'class="wall-svg"')
+        self.assertNotContains(response, "wall.svg")
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        self.assertIn(".wall-svg .wall-panel", css)
+        self.assertIn("fill: var(--wall-panel)", css)
+        self.assertIn("stroke: var(--wall-line)", css)
+        # Feature lines keep their own dimmer stroke: the frame stays
+        # the brightest line, exactly as in the supplied artwork.
+        self.assertIn("stroke: var(--wall-line-dim)", css)
+        for var in ("--wall-wash:", "--wall-panel:", "--wall-line:",
+                    "--wall-line-dim:"):
+            self.assertEqual(css.count(var), 7, var)
+        self.assertEqual(css.count("--wall-edge:"), 1)
+        self.assertEqual(css.count("--wall-feature:"), 1)
+        self.assertIn("--wall-edge: 4.5", css)
+        self.assertIn("--wall-feature: 3.0", css)
+
     def test_marker_layer_overlays_wall_image(self):
         # Regression: with no positioning, the SVG sat below the <img> in
         # normal flow, so markers were off-screen and map clicks hit the
@@ -1470,3 +1774,99 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         with open(css_path) as f:
             css = f.read()
         self.assertRegex(css, r"#climb-layer\s*\{[^}]*position\s*:\s*absolute")
+
+
+class NewsTests(ClimbTestMixin, TestCase):
+    def make_post(self, title="Set date", body="Fresh plastic Monday."):
+        return NewsPost.objects.create(title=title, body=body)
+
+    def test_news_lists_newest_first_with_dates(self):
+        first = self.make_post(title="First post")
+        second = self.make_post(title="Second post")
+        response = self.client.get(reverse("climbs:news"))
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertLess(
+            content.index("Second post"), content.index("First post"))
+        for post in (first, second):
+            self.assertContains(
+                response,
+                f"{post.created_at.day} {post.created_at.strftime('%b %Y')}")
+        # The News tab marks itself current, exactly once.
+        self.assertEqual(content.count('aria-current="page"'), 1)
+        pos = content.index('class="nav-link active"')
+        self.assertIn("News", content[pos:pos + 1200])
+
+    def test_news_paginates_back(self):
+        for i in range(7):
+            self.make_post(title=f"Post {i:02d}")
+        first = self.client.get(reverse("climbs:news"))
+        self.assertEqual(first.content.decode().count("<article"), 5)
+        self.assertContains(first, "Page 1 of 2")
+        self.assertContains(first, "Older →")
+        second = self.client.get(reverse("climbs:news") + "?page=2")
+        self.assertEqual(second.content.decode().count("<article"), 2)
+        self.assertContains(second, "Page 2 of 2")
+        self.assertContains(second, "← Newer")
+
+    def test_staff_can_post_edit_delete(self):
+        staff = self.make_user("editor", staff=True)
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("climbs:news-create"),
+            json.dumps({"title": "  Comp night  ",
+                        "body": "Friday."}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        post = NewsPost.objects.get(id=response.json()["id"])
+        self.assertEqual(post.title, "Comp night")
+        self.assertEqual(post.author, staff)
+        bad = self.client.post(
+            reverse("climbs:news-create"),
+            json.dumps({"title": "  ", "body": "x"}),
+            content_type="application/json")
+        self.assertEqual(bad.status_code, 400)
+        edit = self.client.post(
+            reverse("climbs:news-update", args=[post.id]),
+            json.dumps({"title": "Comp night!", "body": "Friday!"}),
+            content_type="application/json")
+        self.assertEqual(edit.status_code, 200)
+        post.refresh_from_db()
+        self.assertEqual(post.title, "Comp night!")
+        delete = self.client.post(
+            reverse("climbs:news-delete", args=[post.id]),
+            content_type="application/json")
+        self.assertEqual(delete.status_code, 200)
+        self.assertFalse(NewsPost.objects.filter(id=post.id).exists())
+
+    def test_non_staff_cannot_use_news_apis(self):
+        post = self.make_post()
+        member = self.make_user("member")
+        payload = json.dumps({"title": "Hi", "body": "There"})
+        for url in (reverse("climbs:news-create"),
+                    reverse("climbs:news-update", args=[post.id]),
+                    reverse("climbs:news-delete", args=[post.id])):
+            with self.subTest(url=url):
+                response = self.client.post(
+                    url, payload, content_type="application/json")
+                self.assertIn(response.status_code, (302, 403))
+                self.client.force_login(member)
+                response = self.client.post(
+                    url, payload, content_type="application/json")
+                self.assertIn(response.status_code, (302, 403))
+                self.client.logout()
+
+    def test_post_form_shows_for_staff_only(self):
+        self.make_post(title="Hello")
+        member = self.make_user("reader")
+        self.client.force_login(member)
+        response = self.client.get(reverse("climbs:news"))
+        self.assertNotContains(response, 'id="news-publish"')
+        self.assertNotContains(response, "data-edit-post")
+        self.assertNotContains(response, "data-del-post")
+        staff = self.make_user("writer", staff=True)
+        self.client.force_login(staff)
+        response = self.client.get(reverse("climbs:news"))
+        self.assertContains(response, 'id="news-publish"')
+        self.assertContains(response, "data-edit-post")
+        self.assertContains(response, "data-del-post")

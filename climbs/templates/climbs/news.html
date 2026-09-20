@@ -1,0 +1,132 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}Gym news{% endblock %}
+
+{% block content %}
+<div class="narrow news-page">
+    <section class="card">
+        <h2>Gym news</h2>
+        {% if user.is_staff %}
+            <div class="sheet-section">
+                <h3>New post</h3>
+                <label for="news-title">Title</label>
+                <input type="text" id="news-title" maxlength="200" placeholder="e.g. Main Wall re-set week">
+                <label for="news-body">Post</label>
+                <textarea id="news-body" rows="4" maxlength="5000" placeholder="Dates, what's changing, anything climbers should know…"></textarea>
+                <button class="btn btn-md" id="news-publish" type="button">Publish</button>
+            </div>
+        {% endif %}
+        {% for post in page.object_list %}
+            <article class="sheet-section news-post" data-post="{{ post.id }}">
+                <h3>{{ post.title }}</h3>
+                <p class="muted">{{ post.author.username|default:"The gym" }} · {{ post.created_at|date:"j M Y" }}</p>
+                <div class="news-body">{{ post.body|linebreaksbr }}</div>
+                {% if user.is_staff %}
+                    <div class="news-actions">
+                        <button class="btn btn-sm btn-secondary" data-edit-post="{{ post.id }}" type="button">Edit</button>
+                        <button class="btn btn-sm btn-secondary" data-del-post="{{ post.id }}" type="button">Delete</button>
+                    </div>
+                    <div class="news-edit" data-edit-form="{{ post.id }}" hidden>
+                        <label>Title</label>
+                        <input type="text" data-edit-title="{{ post.id }}" maxlength="200" value="{{ post.title }}">
+                        <label>Post</label>
+                        <textarea rows="4" maxlength="5000" data-edit-body="{{ post.id }}">{{ post.body }}</textarea>
+                        <button class="btn btn-md" data-save-post="{{ post.id }}" type="button">Save</button>
+                    </div>
+                {% endif %}
+            </article>
+        {% empty %}
+            <p class="muted">No news yet — check back soon.</p>
+        {% endfor %}
+        {% if page.has_other_pages %}
+            <div class="news-pages">
+                {% if page.has_previous %}
+                    <form method="get" action="{% url 'climbs:news' %}">
+                        <button type="submit" class="btn btn-sm btn-secondary" name="page" value="{{ page.previous_page_number }}">← Newer</button>
+                    </form>
+                {% endif %}
+                <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+                {% if page.has_next %}
+                    <form method="get" action="{% url 'climbs:news' %}">
+                        <button type="submit" class="btn btn-sm btn-secondary" name="page" value="{{ page.next_page_number }}">Older →</button>
+                    </form>
+                {% endif %}
+            </div>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if user.is_staff %}
+<script>
+function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : null;
+}
+
+async function api(url, method, body) {
+    const res = await fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+    return data;
+}
+
+document.getElementById('news-publish').addEventListener('click', async () => {
+    const title = document.getElementById('news-title').value.trim();
+    const body = document.getElementById('news-body').value.trim();
+    if (!title || !body) {
+        alert('Give the post a title and some text first.');
+        return;
+    }
+    try {
+        await api('/news/create/', 'POST', {title, body});
+        location.href = "{% url 'climbs:news' %}";
+    } catch (err) {
+        alert(err.message);
+    }
+});
+
+document.querySelectorAll('[data-edit-post]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const form = document.querySelector(`[data-edit-form="${btn.dataset.editPost}"]`);
+        if (form) form.hidden = !form.hidden;
+    });
+});
+
+document.querySelectorAll('[data-save-post]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const id = btn.dataset.savePost;
+        const title = document.querySelector(`[data-edit-title="${id}"]`).value.trim();
+        const body = document.querySelector(`[data-edit-body="${id}"]`).value.trim();
+        if (!title || !body) {
+            alert('Give the post a title and some text first.');
+            return;
+        }
+        try {
+            await api(`/news/${id}/update/`, 'POST', {title, body});
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+
+document.querySelectorAll('[data-del-post]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        if (!confirm('Delete this post? This cannot be undone.')) return;
+        try {
+            await api(`/news/${btn.dataset.delPost}/delete/`, 'POST');
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+</script>
+{% endif %}
+{% endblock %}

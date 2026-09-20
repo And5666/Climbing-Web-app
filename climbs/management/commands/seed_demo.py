@@ -17,6 +17,7 @@ from climbs.models import (
     Comment,
     GradeSuggestion,
     Rating,
+    TAGS_BY_GRADE,
     WALL_CHOICES,
 )
 from climbs.views import MAP_HEIGHT, MAP_WIDTH
@@ -26,13 +27,11 @@ PASSWORD = "demo1234"
 MONTHS = 5
 CLIMBS_PER_SET = 9
 
-TAG_BY_GRADE = {
-    0: ["white"], 1: ["white", "black"],
-    2: ["red", "green"], 3: ["red", "green"], 4: ["green", "blue"],
-    5: ["blue", "yellow"], 6: ["yellow", "orange"],
-    7: ["orange"], 8: ["project"], 9: ["project"],
-    10: ["project"],
-}
+def _tag_for_grade(grade_num):
+    """One of the tags covering a grade number (white V0–V1, black
+    V1–V2, red V2–V3, green V3–V4, blue V4–V5, yellow V5–V6, orange
+    V6–V7, project V8+)."""
+    return TAGS_BY_GRADE[f"V{grade_num}"][0]
 COLOURS = ["red", "blue", "yellow", "green", "purple", "orange",
            "pink", "white", "black", "lime", "teal", "cyan",
            "magenta", "brown", "grey", "navy", "maroon", "coral"]
@@ -66,6 +65,9 @@ class Command(BaseCommand):
         parser.add_argument(
             "--reset", action="store_true",
             help="Delete all climbing data first (users are kept).")
+        parser.add_argument(
+            "--users", type=int, default=len(CREW),
+            help="How many crew accounts to seed (default %(default)s).")
 
     def handle(self, *args, **options):
         if options["reset"]:
@@ -75,7 +77,7 @@ class Command(BaseCommand):
                 "Climbing data already exists; re-run with --reset "
                 "to wipe it first (users are kept).")
         rng = random.Random(20260918)
-        crew = self._crew()
+        crew = self._crew(max(options["users"], 1))
         today = now().date()
         first = (today.year, today.month)
         for _ in range(MONTHS - 1):
@@ -104,7 +106,7 @@ class Command(BaseCommand):
                 for slot in range(CLIMBS_PER_SET):
                     grade_num = min(grades[slot % len(grades)], 8)
                     colour = COLOURS[(pos * 3 + slot) % len(COLOURS)]
-                    tag = rng.choice(TAG_BY_GRADE[grade_num])
+                    tag = _tag_for_grade(grade_num)
                     x = 30 + (slot % 3) * 98 + rng.uniform(-12, 12)
                     y = 60 + (slot // 3) * 130 + rng.uniform(-12, 12)
                     climb = Climb.objects.create(
@@ -116,6 +118,23 @@ class Command(BaseCommand):
                         y_percent=round(min(max(y, 8), MAP_HEIGHT - 8), 1),
                     )
                     Climb.objects.filter(id=climb.id).update(date_set=stamp.date())
+                # The weekly mystery tags: any hidden grade, flat
+                # points and no harder/softer votes until revealed.
+                # Live sets carry two; archived sets keep one each.
+                spots = (("Mystery Box", 128, 450),
+                         ("Mystery Machine", 190, 430)) if live else (
+                         ("Mystery Box", 128, 450),)
+                for mystery_name, mx, my in spots:
+                    mystery_grade = rng.randint(1, 6)
+                    Climb.objects.create(
+                        name=mystery_name,
+                        grade=f"V{mystery_grade}", tag="mystery",
+                        colour="white",
+                        wall=wall, climb_set=climb_set,
+                        is_active=live,
+                        x_percent=round(min(max(mx + rng.uniform(-12, 12), 8), MAP_WIDTH - 8), 1),
+                        y_percent=round(min(max(my + rng.uniform(-12, 12), 8), MAP_HEIGHT - 8), 1),
+                    )
                 self._sends(rng, crew, climb_set, year, month, live)
                 if live:
                     self._ratings(rng, crew, climb_set)
@@ -124,7 +143,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(
             f"Seeded {MONTHS} months per wall for "
-            f"{len(CREW)} users (password {PASSWORD!r}): "
+            f"{len(crew)} users (password {PASSWORD!r}): "
             f"{ClimbSet.objects.count()} sets, "
             f"{Climb.objects.count()} climbs, "
             f"{Ascent.objects.count()} sends, "
@@ -140,9 +159,14 @@ class Command(BaseCommand):
         Climb.objects.all().delete()
         ClimbSet.objects.all().delete()
 
-    def _crew(self):
+    def _crew(self, count):
+        names = list(CREW)
+        extra = 1
+        while len(names) < count:
+            names.append(f"climber{extra:02d}")
+            extra += 1
         users = []
-        for username in CREW:
+        for username in names[:count]:
             user, created = get_user_model().objects.get_or_create(
                 username=username,
                 defaults={"email": f"{username}@example.com"})
