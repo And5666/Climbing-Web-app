@@ -189,14 +189,19 @@ class ProfilePageTests(TestCase):
         self.assertContains(response, reverse("accounts:stats"))
 
     def test_avatar_upload_uses_pick_button(self):
-        # The raw file input hides behind a proper button that shows
-        # the chosen filename.
+        # The raw file input hides behind a real button that shows
+        # the chosen filename. A <label> pointing at an off-canvas
+        # input swallowed first taps on mobile and stayed dead after
+        # a cancelled pick, so the button opens the input in the
+        # same tap instead.
         user = self.make_user("picker")
         self.client.force_login(user)
         response = self.client.get(reverse("accounts:profile"))
-        self.assertContains(response, 'avatar-pick')
+        self.assertContains(response, 'id="avatar-pick"')
         self.assertContains(response, 'for="id_avatar"')
         self.assertContains(response, "Choose picture")
+        self.assertContains(response, "showPicker")
+        self.assertContains(response, "input.click()")
         # One remove control: a hidden button (no stored photo) plus
         # a hidden removal flag for it to toggle.
         self.assertContains(response, 'id="avatar-remove"')
@@ -205,10 +210,25 @@ class ProfilePageTests(TestCase):
         # No Django Currently/Clear/Change widget alongside it.
         self.assertNotContains(response, "avatar-clear")
 
-    def test_file_input_cannot_shift_mobile_layout(self):
-        # The native input lives fully off-canvas at 16px type:
-        # an in-flow 1px input makes mobile browsers scroll/zoom
-        # the page to it when the device picker opens.
+    def test_avatar_picker_recovers_from_bad_picks(self):
+        # Cancelling or mis-picking must leave the button usable:
+        # stale async downscales never overwrite a newer pick, an
+        # unreadable file resets the control with a message, and
+        # gallery images with an empty type still count as images.
+        user = self.make_user("repick")
+        self.client.force_login(user)
+        response = self.client.get(reverse("accounts:profile"))
+        self.assertContains(response, "pickSeq")
+        self.assertContains(response, "looksLikeImage")
+        self.assertContains(response, "Reading picture")
+        self.assertContains(response, "Could not read that picture")
+
+    def test_file_input_hides_in_place(self):
+        # The native input hides inside its row at 16px type, never
+        # off-canvas: mobile browsers unreliably open pickers from
+        # labels pointing at off-screen inputs (first taps swallowed,
+        # dead control after a cancel). Taps reach the button
+        # instead; the input keeps no pointer events.
         from django.contrib.staticfiles import finders
 
         css_path = finders.find("climbs/style.css")
@@ -216,8 +236,9 @@ class ProfilePageTests(TestCase):
             css = f.read()
         block = css.split(
             '.avatar-pick-row input[type="file"]')[1].split("}")[0]
-        self.assertIn("position: fixed", block)
-        self.assertIn("-9999px", block)
+        self.assertIn("position: absolute", block)
+        self.assertNotIn("-9999px", block)
+        self.assertIn("pointer-events: none", block)
         self.assertIn("font-size: 16px", block)
 
     def test_profile_has_theme_toggle(self):
@@ -279,6 +300,25 @@ class ProfilePageTests(TestCase):
         self.assertEqual(response.status_code, 302)
         me.refresh_from_db()
         self.assertTrue(me.avatar.name.startswith("avatars/"))
+
+    def test_saved_avatar_is_served(self):
+        # The live container runs DEBUG=False, where static() adds no
+        # routes: a saved picture must still come back, not 404 (the
+        # profile then shows only the alt text).
+        import tempfile
+
+        from django.core.files.base import ContentFile
+        from django.test import override_settings
+
+        me = self.make_user("served")
+        with tempfile.TemporaryDirectory() as media:
+            with override_settings(MEDIA_ROOT=media):
+                me.avatar.save(
+                    "me.png",
+                    ContentFile(b"\x89PNG\r\n\x1a\n" + b"\x00" * 64))
+                response = self.client.get(me.avatar.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("image/", response["Content-Type"])
 
     def test_remove_avatar_clears_photo(self):
         # "Remove photo" deletes the stored file and clears

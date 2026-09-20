@@ -45,7 +45,7 @@
                 <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
                      xmlns="http://www.w3.org/2000/svg">
                     {% for climb in climbs %}
-                        <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}">
+                        <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}" data-name="{{ climb.name|escape }}" data-colour="{{ climb.colour }}">
                             <circle class="climb-hit" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="20"
                                     fill="rgba(0,0,0,0)"/>
                             <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
@@ -58,6 +58,12 @@
                 </svg>
             </div>
         </div>
+    </div>
+
+    <div id="marker-picker" hidden>
+        <p class="picker-title" id="picker-title">Choose a climb</p>
+        <ul id="picker-list"></ul>
+        <button type="button" class="picker-close" id="picker-close">Close</button>
     </div>
 
     <div id="climb-popup" aria-hidden="true">
@@ -83,6 +89,10 @@
             smoothScroll: false,
             bounds: true,
             boundsPadding: 0.1,
+            // Gentler pinch: when a finger lifts or touches reorder
+            // mid-pinch the span jumps and full speed turns that
+            // into a violent zoom. Half speed keeps pinches calm.
+            pinchSpeed: 0.5,
         }) : null;
 
         // Markers deliberately shrink a little when zoomed out and grow
@@ -122,25 +132,53 @@
         // panzoom itself. The shift is sub-pixel (invisible) and the
         // fresh transform re-renders the layer crisply. Wheel/pinch
         // fire no end event, so debounce the transform stream.
-        // Pure pans skip it (scale unchanged).
+        // Pure pans skip it (scale unchanged). The nudge only ever
+        // fires when truly idle: re-entering panzoom while a pan,
+        // pinch or smooth zoom is still in flight fights it and the
+        // map visibly jumps.
         let settledScale = pz ? pz.getTransform().scale : 1;
         let settleTimer = 0;
+        let lastTransformAt = 0;
+        let mapPointerDown = false;
+        const mapViewport = document.getElementById('map-viewport');
+        if (mapViewport) {
+            mapViewport.addEventListener('pointerdown', () => {
+                mapPointerDown = true;
+            });
+            window.addEventListener('pointerup', () => {
+                mapPointerDown = false;
+            });
+            window.addEventListener('pointercancel', () => {
+                mapPointerDown = false;
+            });
+        }
         function sharpenAfterZoom() {
             if (!pz) return;
+            lastTransformAt = Date.now();
             clearTimeout(settleTimer);
-            settleTimer = setTimeout(() => {
-                const t = pz.getTransform();
-                if (t.scale === settledScale) return;
-                settledScale = t.scale;
-                const q = 1 / (window.devicePixelRatio || 1);
-                let x = Math.round(t.x / q) * q;
-                let y = Math.round(t.y / q) * q;
-                // Already pixel-aligned: nudge a hair so a fresh
-                // transform still commits. Far below visibility.
-                if (x === t.x && y === t.y) x += q / 64;
-                rescaleMarkers();
-                pz.moveTo(x, y);
-            }, 150);
+            settleTimer = setTimeout(settleNudge, 150);
+        }
+        function settleNudge() {
+            // Still interacting, or transforms still arriving:
+            // wait for real idleness. This retry deliberately
+            // leaves lastTransformAt alone, or the nudge could
+            // defer itself forever.
+            if (mapPointerDown || Date.now() - lastTransformAt < 250) {
+                clearTimeout(settleTimer);
+                settleTimer = setTimeout(settleNudge, 150);
+                return;
+            }
+            const t = pz.getTransform();
+            if (t.scale === settledScale) return;
+            settledScale = t.scale;
+            const q = 1 / (window.devicePixelRatio || 1);
+            let x = Math.round(t.x / q) * q;
+            let y = Math.round(t.y / q) * q;
+            // Already pixel-aligned: nudge a hair so a fresh
+            // transform still commits. Far below visibility.
+            if (x === t.x && y === t.y) x += q / 64;
+            rescaleMarkers();
+            pz.moveTo(x, y);
         }
         if (pz) pz.on('transform', sharpenAfterZoom);
 
@@ -645,6 +683,78 @@
         // pan/zoom layer can swallow click events after touch gestures,
         // while pointerup reliably fires. Drags (moved far / held long)
         // still pan the map instead of opening the sheet.
+        // Overlapping markers share one tap point: gather every visible
+        // marker within a finger-sized radius of the tap and, when more
+        // than one qualifies, offer a chooser so the right climb is
+        // always reachable on phones and desktops alike.
+        const picker = document.getElementById('marker-picker');
+        const pickerList = document.getElementById('picker-list');
+        const pickerTitle = document.getElementById('picker-title');
+        const PICK_RADIUS = 30;
+        function markerCenter(m) {
+            const dot = m.querySelector('.climb-dot') || m;
+            const r = dot.getBoundingClientRect();
+            return {x: r.left + r.width / 2, y: r.top + r.height / 2};
+        }
+        function visibleMarkers() {
+            return [...document.querySelectorAll('.climb-marker')].filter(
+                m => m.style.display !== 'none');
+        }
+        function nearbyMarkers(x, y) {
+            return visibleMarkers()
+                .map(m => {
+                    const c = markerCenter(m);
+                    return {m, d: Math.hypot(c.x - x, c.y - y)};
+                })
+                .filter(o => o.d <= PICK_RADIUS)
+                .sort((a, b) => a.d - b.d)
+                .map(o => o.m);
+        }
+        function hidePicker() {
+            if (!picker) return;
+            picker.setAttribute('hidden', '');
+            pickerList.innerHTML = '';
+        }
+        async function openClimb(id) {
+            currentId = id;
+            await refreshPopup();
+        }
+        function showPicker(candidates, x, y) {
+            pickerList.innerHTML = '';
+            pickerTitle.textContent = candidates.length + ' climbs here — pick one';
+            candidates.forEach(m => {
+                const li = document.createElement('li');
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'pick';
+                const label = m.dataset.name || m.dataset.colour || ('#' + m.dataset.climbId);
+                const grade = m.dataset.grade || '?';
+                const colour = m.dataset.colour || '#888';
+                btn.innerHTML = '<span class="pick-dot"></span><span class="pick-label"></span>' +
+                    '<span class="pick-grade">' + esc(grade) + '</span>';
+                btn.querySelector('.pick-dot').style.background = colour;
+                btn.querySelector('.pick-label').textContent = label;
+                btn.addEventListener('click', async () => {
+                    hidePicker();
+                    await openClimb(m.dataset.climbId);
+                });
+                li.appendChild(btn);
+                pickerList.appendChild(li);
+            });
+            picker.removeAttribute('hidden');
+            const w = picker.offsetWidth || 240;
+            const h = picker.offsetHeight || 160;
+            picker.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x + 12)) + 'px';
+            picker.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, y + 12)) + 'px';
+            const first = pickerList.querySelector('button');
+            if (first) first.focus({preventScroll: true});
+        }
+        document.getElementById('picker-close').addEventListener('click', hidePicker);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && picker && !picker.hasAttribute('hidden')) hidePicker();
+        });
+        document.getElementById('map-viewport').addEventListener('pointerdown', hidePicker);
+        if (pz) pz.on('transform', hidePicker);
         document.querySelectorAll('.climb-marker').forEach(marker => {
             let down = null;
             marker.addEventListener('pointerdown', (e) => {
@@ -656,8 +766,13 @@
                 const held = Date.now() - down.t;
                 down = null;
                 if (moved > 12 || held > 600) return;
-                currentId = marker.dataset.climbId;
-                await refreshPopup();
+                let candidates = nearbyMarkers(e.clientX, e.clientY);
+                if (!candidates.includes(marker)) candidates = [marker, ...candidates];
+                if (candidates.length > 1) {
+                    showPicker(candidates, e.clientX, e.clientY);
+                    return;
+                }
+                await openClimb(marker.dataset.climbId);
             });
             marker.addEventListener('pointercancel', () => {
                 down = null;

@@ -672,9 +672,16 @@ nav a svg {
     gap: 1rem;
 }
 
-/* Picture upload: the native file input hides while its label
-   wears a button, and shows the chosen filename once picked. */
+/* Picture upload: the native file input hides in place while a
+   real button opens it, and the button shows the chosen filename
+   once picked. The input stays rendered inside the row (never
+   off-canvas): mobile browsers unreliably open pickers from
+   labels pointing at off-screen inputs — first taps get
+   swallowed and the control can stay dead after a cancel.
+   pointer-events off so taps land on the button; 16px type
+   stops the auto-zoom as well. */
 .avatar-pick-row {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 0.6rem;
@@ -687,16 +694,14 @@ nav a svg {
 }
 
 .avatar-pick-row input[type="file"] {
-    /* Fully off-canvas: an in-flow 1px input makes mobile
-       browsers scroll/zoom the page to it when the device
-       picker opens. 16px type stops the auto-zoom as well. */
-    position: fixed;
-    top: -9999px;
-    left: -9999px;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 1px;
     height: 1px;
     opacity: 0;
     overflow: hidden;
+    pointer-events: none;
     font-size: 16px;
 }
 
@@ -1154,6 +1159,12 @@ main {
     position: relative;
     width: 100%;
     height: 100%;
+    /* Panzoom owns every gesture on the scene: without this the
+       browser fights it for two-finger touches (native page
+       pinch/scroll vs panzoom) and the map jumps. The page itself
+       never scrolls and the sheet/panel live outside the stack,
+       so nothing else needs native touch handling here. */
+    touch-action: none;
 }
 
 #map-content {
@@ -1235,6 +1246,101 @@ main {
        compact mono label no matter which theme font is active. */
     font-family: ui-monospace, "Cascadia Mono", "JetBrains Mono",
         SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* --- Overlap picker: when markers sit close together one tap point
+   covers several climbs, so the tap offers a short list instead of
+   always opening the topmost marker. Finger-sized rows, theme
+   surfaces, above the sheet scrim but below nothing else. */
+#marker-picker {
+    position: fixed;
+    z-index: 120;
+    max-width: min(300px, calc(100vw - 2rem));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow);
+    padding: 0.6rem;
+}
+
+#marker-picker[hidden] {
+    display: none;
+}
+
+#marker-picker .picker-title {
+    margin: 0 0 0.4rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+}
+
+#marker-picker ul {
+    list-style: none;
+    margin: 0 0 0.4rem;
+    padding: 0;
+    max-height: 40vh;
+    overflow-y: auto;
+}
+
+#marker-picker li + li {
+    margin-top: 0.3rem;
+}
+
+#marker-picker .pick {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    min-height: 48px;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    color: var(--text);
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+#marker-picker .pick:hover {
+    border-color: var(--accent);
+}
+
+#marker-picker .pick-dot {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+}
+
+#marker-picker .pick-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#marker-picker .pick-grade {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+#marker-picker .picker-close {
+    width: 100%;
+    min-height: 44px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    color: var(--muted);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
 }
 
 /* --- Bottom sheet (climb popup, phone-first) --- */

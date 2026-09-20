@@ -1775,6 +1775,54 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             css = f.read()
         self.assertRegex(css, r"#climb-layer\s*\{[^}]*position\s*:\s*absolute")
 
+    def test_overlapping_markers_offer_picker(self):
+        # Close-together markers overlap, so the topmost one always won
+        # the tap. The map must ship a chooser: markers carry the name
+        # and colour it needs, and a tap near several markers lists
+        # every candidate instead of opening just one.
+        first = self.make_climb(name="Near One", x=50.0, y=100.0)
+        second = self.make_climb(name="Near Two", x=50.5, y=100.5)
+        response = self.client.get(reverse("climbs:map"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="marker-picker"')
+        self.assertContains(response, 'id="picker-list"')
+        self.assertContains(response, 'id="picker-close"')
+        self.assertContains(response, "nearbyMarkers")
+        self.assertContains(response, "showPicker")
+        self.assertContains(response, "PICK_RADIUS")
+        for climb in (first, second):
+            self.assertContains(response, f'data-climb-id="{climb.id}"')
+            self.assertContains(
+                response, f'data-name="{climb.name}"')
+            self.assertContains(response, 'data-colour="red"')
+        css_path = finders.find("climbs/style.css")
+        self.assertIsNotNone(css_path)
+        with open(css_path) as f:
+            css = f.read()
+        self.assertIn("#marker-picker", css)
+        self.assertIn("#marker-picker .pick", css)
+
+    def test_deep_zoom_stays_put(self):
+        # Zooming deep flung the map across the screen and dropped
+        # the zoom on phones and desktops: panzoom got a re-entrant
+        # nudge mid-gesture, full-speed pinches on chaotic touch
+        # spans, and the browser fighting it for two-finger touches.
+        response = self.client.get(reverse("climbs:map"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "pinchSpeed")
+        self.assertContains(response, "settleNudge")
+        self.assertContains(response, "mapPointerDown")
+        self.assertContains(response, "lastTransformAt")
+        # Intended behaviour stays: bounded pan/zoom at up to 8x.
+        self.assertContains(response, "bounds: true")
+        self.assertContains(response, "maxZoom: 8")
+        css_path = finders.find("climbs/style.css")
+        self.assertIsNotNone(css_path)
+        with open(css_path) as f:
+            css = f.read()
+        stack_block = css.split("#map-stack")[1].split("}")[0]
+        self.assertIn("touch-action: none", stack_block)
+
 
 class NewsTests(ClimbTestMixin, TestCase):
     def make_post(self, title="Set date", body="Fresh plastic Monday."):

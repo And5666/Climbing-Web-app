@@ -63,7 +63,7 @@
                 {{ profile_form.username }}
                 <label for="id_avatar">Profile picture</label>
                 <div class="avatar-pick-row">
-                    <label class="btn btn-md btn-secondary avatar-pick" for="id_avatar">Choose picture</label>
+                    <button type="button" class="btn btn-md btn-secondary avatar-pick" id="avatar-pick">Choose picture</button>
                     {{ profile_form.avatar }}
                     {{ profile_form.remove_avatar }}
                     <button type="button" class="btn btn-md btn-secondary avatar-unpick" id="avatar-remove"{% if user.avatar %} data-stored="1"{% else %} hidden{% endif %}>Remove photo</button>
@@ -126,7 +126,7 @@
     // tiny and the server never has to process images.
     const input = document.getElementById('id_avatar');
     const note = document.getElementById('avatar-note');
-    const pickLabel = document.querySelector('.avatar-pick');
+    const pickLabel = document.getElementById('avatar-pick');
     const removeBtn = document.getElementById('avatar-remove');
     const removeFlag = document.getElementById('id_remove_avatar');
     const pickText = pickLabel ? pickLabel.textContent : 'Choose picture';
@@ -164,22 +164,64 @@
             paintAvatar();
         });
     }
+    // The visible control is a real button that opens the native
+    // input in the same tap: label-activated off-canvas inputs
+    // intermittently swallow the first tap on mobile, and stay dead
+    // after the picker is cancelled.
+    if (pickLabel && input) {
+        pickLabel.addEventListener('click', () => {
+            try {
+                if (typeof input.showPicker === 'function') {
+                    input.showPicker();
+                    return;
+                }
+            } catch (e) { /* fall through to click() */ }
+            input.click();
+        });
+    }
+    // Some phone galleries hand over images with an empty file type,
+    // so fall back to the extension before giving up on a pick.
+    function looksLikeImage(file) {
+        if (file.type && file.type.startsWith('image/')) return true;
+        return /\.(jpe?g|png|gif)$/i.test(file.name || '');
+    }
+    // Every pick gets a number: a slow downscale from an earlier pick
+    // must never overwrite a newer one.
+    let pickSeq = 0;
     if (input) {
         input.setAttribute('accept', 'image/jpeg,image/png,image/gif');
         input.addEventListener('change', () => {
+            const myPick = ++pickSeq;
             const file = input.files && input.files[0];
             if (pickLabel && file) pickLabel.textContent = file.name;
             if (file) {
                 // A fresh upload wins: drop any armed removal and let
                 // the downscaler below announce the pending picture.
                 if (removeFlag) removeFlag.value = '';
-                if (note) note.textContent = noteText;
+                // Instant feedback, so a slow gallery image is never
+                // mistaken for a dead button and picked twice.
+                if (note) note.textContent = 'Reading picture…';
             }
             paintAvatar();
-            if (!file || !file.type.startsWith('image/')) return;
+            if (!file || !looksLikeImage(file)) {
+                if (file && note) note.textContent = 'That file is not a JPG, PNG or GIF — try another.';
+                return;
+            }
             const url = URL.createObjectURL(file);
             const img = new Image();
+            img.onerror = () => {
+                URL.revokeObjectURL(url);
+                if (myPick !== pickSeq) return;
+                input.value = '';
+                if (pickLabel) pickLabel.textContent = pickText;
+                if (note) note.textContent = 'Could not read that picture — try another.';
+                paintAvatar();
+            };
             img.onload = () => {
+                if (myPick !== pickSeq) {
+                    URL.revokeObjectURL(url);
+                    return;
+                }
                 const side = Math.min(256, Math.max(img.width, img.height));
                 const scale = side / Math.max(img.width, img.height);
                 const w = Math.round(img.width * scale), h = Math.round(img.height * scale);
@@ -189,7 +231,7 @@
                 canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                 URL.revokeObjectURL(url);
                 canvas.toBlob((blob) => {
-                    if (!blob) return;
+                    if (!blob || myPick !== pickSeq) return;
                     const resized = new File([blob], 'avatar.jpg', {type: 'image/jpeg'});
                     const data = new DataTransfer();
                     data.items.add(resized);
