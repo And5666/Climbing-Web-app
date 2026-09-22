@@ -47,7 +47,7 @@
                     {% for climb in climbs %}
                         <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}" data-name="{{ climb.name|escape }}" data-colour="{{ climb.colour }}">
                             <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
-                                    fill="{{ climb.colour_hex }}" stroke="#ffffff" stroke-width="1.2"/>
+                                    fill="{{ climb.colour }}" stroke="#ffffff" stroke-width="1.2"/>
                             <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
                                   text-anchor="middle" dominant-baseline="central"
                                   fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.display_grade|default:"?" }}</text>
@@ -77,10 +77,12 @@
         // which holds the photo and the SVG overlay together. If the
         // module failed to load, the map still works unzoomed: markers
         // and the sheet below must never depend on it.
+        // Markers match the admin wall exactly: the stored colour
+        // rendered raw, white grade text with a dark halo at every
+        // zoom. No contrast re-toning, so both pages look the same.
         function paintMarkers(scale) {
             if (!window.WallView) return;
             window.WallView.rescaleMarkers(document, scale);
-            window.WallView.applyMarkerContrast(document);
         }
         const mapZoom = window.WallView ? window.WallView.create({
             viewport: document.getElementById('map-viewport'),
@@ -273,7 +275,7 @@
             const tag = climbTag(data.tag, data.grade);
             sheetBody.innerHTML = `
                 <div class="sheet-head">
-                    <span class="climb-dot" style="background:${esc(data.colour_hex || data.colour)}"></span>
+                    <span class="climb-dot" style="background:${esc(data.colour)}"></span>
                     <div class="sheet-title">
                         <h3>${esc(data.name) || esc(data.colour_name) || esc(data.colour) || 'Unnamed climb'} <span class="grade-pill ${tag.cls}">${esc(tag.label)}</span></h3>
                         <p class="wall-line">${esc(data.wall_display)}</p>

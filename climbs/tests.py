@@ -1740,8 +1740,10 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             user=user, tries=1, points=calculate_points("V4", 1))
         self.client.force_login(user)
         response = self.client.get(reverse("climbs:map"))
-        # Inner circles keep the setter's tape colour (renderable hex).
-        self.assertContains(response, 'fill="#e03131"')
+        # Inner circles keep the stored colour rendered raw, exactly
+        # as the admin wall paints it (not the remapped tape hex).
+        self.assertContains(response, 'fill="red"')
+        self.assertNotContains(response, 'fill="#e03131"')
         content = response.content.decode()
         sent_pos = content.index(f'data-climb-id="{sent.id}"')
         sent_window = content[sent_pos:sent_pos + 1200]
@@ -3006,6 +3008,21 @@ class ColourTests(ClimbTestMixin, TestCase):
         self.assertEqual(colour_text_on("yellow"), "#000000")
         self.assertEqual(colour_text_on("black"), "#ffffff")
         self.assertEqual(colour_text_on("navy"), "#ffffff")
+
+    def test_map_and_admin_markers_match(self):
+        # Same climb, same marker on both pages: the stored colour
+        # rendered raw, white halo grade text, and no contrast
+        # re-toning on the public map.
+        self.make_climb(name="Same", grade="V4")
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(response, 'fill="red"')
+        self.assertNotContains(response, 'fill="#e03131"')
+        self.assertContains(response, "WallView.rescaleMarkers")
+        self.assertNotContains(response, "applyMarkerContrast")
+        staff = self.make_user("parity", staff=True)
+        self.client.force_login(staff)
+        admin = self.client.get(reverse("climbs:climb-admin"))
+        self.assertContains(admin, 'fill="red"')
 
     def test_admin_saves_preset_name(self):
         staff = self.make_user("colourist", staff=True)
