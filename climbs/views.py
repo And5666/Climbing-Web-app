@@ -1164,6 +1164,32 @@ def set_remove_user_api(request, set_id):
     return JsonResponse({"status": "ok", "removed": removed})
 
 
+@require_http_methods(["POST"])
+def recalc_points_api(request):
+    """Recompute every ascent's points from its stored grade and tries
+    (official grade only). Fixes boards left stale by a scoring change.
+    Tries and timestamps are never touched; only rows whose points
+    differ are updated. Staff only (404 otherwise)."""
+    from .scoring import calculate_points
+    _staff_or_404(request)
+    total = 0
+    changed = 0
+    ascents = Ascent.objects.select_related("climb").all()
+    for ascent in ascents.iterator():
+        total += 1
+        fresh = calculate_points(
+            ascent.climb.grade, ascent.tries, ascent.climb.tag)
+        if ascent.points != fresh:
+            # Queryset update: touches points only, never tries or
+            # timestamps.
+            Ascent.objects.filter(pk=ascent.pk).update(points=fresh)
+            changed += 1
+    _moderation_log(request.user, "recalc_points",
+                    details={"total": total, "changed": changed})
+    return JsonResponse(
+        {"status": "ok", "total": total, "changed": changed})
+
+
 @user_passes_test(staff_check)
 @require_http_methods(["POST"])
 def climb_create_api(request):

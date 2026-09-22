@@ -47,6 +47,7 @@
                         <span aria-hidden="true">·</span>
                         <span{% if open_flag_count %} class="review-attn"{% endif %}>{{ open_flag_count }} need review</span>
                     </p>
+                    <button class="btn btn-sm btn-secondary" id="recalc-points" type="button">Recalculate scores</button>
                 {% endif %}
             </div>
             <form method="get" action="{% url 'climbs:board-admin' %}" class="flag-filters">
@@ -250,6 +251,23 @@ document.querySelectorAll('[data-flag-dismiss]').forEach(btn => {
 });
 document.querySelectorAll('[data-flag-confirm]').forEach(btn => {
     btn.addEventListener('click', () => reviewFlag(btn.dataset.flagConfirm, 'confirmed', true));
+});
+
+// Recalculate scores: re-scores every ascent from its stored grade
+// + tries after a scoring change, then reloads the board.
+document.getElementById('recalc-points')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    if (!confirm('Recalculate every score from stored grades + tries?')) return;
+    try {
+        btn.disabled = true;
+        const res = await api('/admin-tools/boards/recalculate/', 'POST');
+        alert(`Recalculated ${res.total} send${res.total === 1 ? '' : 's'}, ${res.changed} changed.`);
+        location.reload();
+    } catch (err) {
+        alert(err.message);
+    } finally {
+        btn.disabled = false;
+    }
 });
 
 document.querySelectorAll('[data-hide-user]').forEach(btn => {

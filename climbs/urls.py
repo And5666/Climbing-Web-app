@@ -30,6 +30,7 @@ urlpatterns = [
     path("admin-tools/sets/<int:set_id>/update/", views.climb_set_update_api, name="climb-set-update"),
     path("admin-tools/sets/<int:set_id>/delete/", views.climb_set_delete_api, name="climb-set-delete"),
     path("admin-tools/sets/<int:set_id>/remove-user/", views.set_remove_user_api, name="climb-set-remove-user"),
+    path("admin-tools/boards/recalculate/", views.recalc_points_api, name="board-recalculate"),
     path("admin-tools/flags/<int:flag_id>/review/", views.flag_review_api, name="flag-review"),
     path("admin-tools/flags/review-many/", views.flags_review_many_api, name="flags-review-many"),
     path("admin-tools/ascents/<int:ascent_id>/void/", views.ascent_void_api, name="ascent-void"),

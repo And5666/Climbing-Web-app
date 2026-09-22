@@ -347,6 +347,53 @@ class ScoringTests(ClimbTestMixin, TestCase):
             calculate_points("V4", 2))
 
 
+class RecalcPointsApiTests(ClimbTestMixin, TestCase):
+    def test_staff_recalculate_fixes_stale_scores(self):
+        staff = self.make_user("recalcstaff", staff=True)
+        user = self.make_user("staleuser")
+        climb = self.make_climb(grade="V4")
+        ascent = climb.ascents.create(user=user, tries=5, points=1)
+        stamp = ascent.logged_at
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("climbs:board-recalculate"))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data, {"status": "ok", "total": 1,
+                               "changed": 1})
+        ascent.refresh_from_db()
+        self.assertEqual(ascent.points, calculate_points("V4", 5))
+        # Tries and timestamps are never touched.
+        self.assertEqual(ascent.tries, 5)
+        self.assertEqual(ascent.logged_at, stamp)
+        # Second run is a no-op.
+        again = self.client.post(reverse("climbs:board-recalculate"))
+        self.assertEqual(again.json()["changed"], 0)
+
+    def test_recalculate_is_staff_only(self):
+        user = self.make_user("staleregular")
+        climb = self.make_climb(grade="V4")
+        climb.ascents.create(user=user, tries=5, points=1)
+        response = self.client.post(reverse("climbs:board-recalculate"))
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(Ascent.objects.get(user=user).points, 1)
+        self.client.force_login(user)
+        denied = self.client.post(reverse("climbs:board-recalculate"))
+        self.assertEqual(denied.status_code, 404)
+        self.assertEqual(Ascent.objects.get(user=user).points, 1)
+
+    def test_board_admin_offers_recalculate(self):
+        staff = self.make_user("recalcux", staff=True)
+        self.client.force_login(staff)
+        user = self.make_user("recalcglance")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        response = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(response, "Recalculate scores")
+        self.assertContains(response, "/admin-tools/boards/recalculate/")
+
+
 class RatingAndGradeTests(ClimbTestMixin, TestCase):
     def test_rating_upsert_and_average(self):
         alice = self.make_user("alice")
