@@ -188,6 +188,44 @@ class ProfilePageTests(TestCase):
         response = self.client.get(reverse("accounts:profile"))
         self.assertContains(response, reverse("accounts:stats"))
 
+    def test_logout_lives_on_profile_not_nav(self):
+        # Log out is a POST form with CSRF on the profile page
+        # (LogoutView needs POST); the nav keeps just the profile
+        # link so it stays reachable on mobile.
+        user = self.make_user("quitter")
+        self.client.force_login(user)
+        profile = self.client.get(reverse("accounts:profile"))
+        self.assertContains(profile, 'action="/accounts/logout/"')
+        self.assertContains(profile, "csrfmiddlewaretoken")
+        self.assertContains(profile, ">Log out</button>")
+        nav = self.client.get(reverse("climbs:map")).content.decode()
+        self.assertIn(reverse("accounts:profile"), nav)
+        self.assertNotIn("/accounts/logout/", nav)
+        # The form actually logs out.
+        self.client.post(reverse("logout"))
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_profile_footer_has_version_and_contact(self):
+        # One version source, stamped in the footer with a working
+        # mailto contact.
+        from summit_map_project import VERSION
+        user = self.make_user("footy")
+        self.client.force_login(user)
+        response = self.client.get(reverse("accounts:profile"))
+        self.assertContains(response, f"Summit v{VERSION}")
+        self.assertContains(response, "mailto:ac0566@proton.me")
+        self.assertContains(response, "ac0566@proton.me")
+        self.assertContains(response, "profile-footer")
+        # Styled footer: version stamp plus a button contact.
+        self.assertContains(response, 'class="ver"')
+        self.assertContains(response, "btn btn-sm btn-secondary")
+        from django.contrib.staticfiles import finders
+        with open(finders.find("climbs/style.css")) as f:
+            css = f.read()
+        footer = css.split(".profile-footer {")[1].split("}")[0]
+        self.assertIn("background", footer)
+        self.assertIn("border", footer)
+
     def test_avatar_upload_uses_pick_button(self):
         # The raw file input hides behind a real button that shows
         # the chosen filename. A <label> pointing at an off-canvas

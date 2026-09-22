@@ -48,10 +48,6 @@
                     {% endif %}
                     <span class="nav-name">{{ user.username }}</span>
                 </a>
-                <form method="post" action="{% url 'logout' %}" style="display:inline;">
-                    {% csrf_token %}
-                    <button type="submit" class="btn btn-sm btn-secondary">Log out</button>
-                </form>
             {% else %}
                 <a href="{% url 'login' %}">Sign in</a>
             {% endif %}

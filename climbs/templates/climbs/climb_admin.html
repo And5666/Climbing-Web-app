@@ -86,7 +86,10 @@
     </div>
 </div>
 
-<div id="climb-edit-panel" class="auth-form" style="display:none; position:fixed; bottom:1rem; left:50%; transform:translateX(-50%); z-index:200;">
+<div id="climb-edit-panel" class="auth-form" style="display:none; position:fixed; left:0; right:0; bottom:0; z-index:200; margin:0 auto; width:min(560px, 100vw); max-height:85vh; overflow-y:auto;">
+    <div class="grabber" id="panel-grabber" title="Drag down to close">
+        <span class="grab-pill"></span>
+    </div>
     <h2 id="panel-title">New climb</h2>
     <label>Name (optional)</label>
     <input type="text" id="f-name">
@@ -121,39 +124,28 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="https://unpkg.com/panzoom@9.4.3/dist/panzoom.min.js"></script>
+<script src="{% static 'climbs/wall-view.js' %}"></script>
 <script>
 const svg = document.getElementById('climb-layer');
-const stack = document.getElementById('map-stack');
-// Zoom (wheel/pinch) is progressive enhancement: if the CDN is
-// unreachable the markers and edit panel below must still work.
-const pz = window.panzoom ? panzoom(stack, {
-    maxZoom: 8,
-    minZoom: 0.5,
-    smoothScroll: false,
-    bounds: true,
-    boundsPadding: 0.1,
-}) : null;
-
-// Markers hold a steady on-screen size while zoomed (same softer
-// counter-scale as the public map) so a wall of climbs stays
-// readable and draggable at any zoom.
-const BASE_R = 7, BASE_FONT = 7, BASE_STROKE = 1.2;
-function rescaleMarkers() {
-    const s = pz ? pz.getTransform().scale : 1;
-    const f = 1 / Math.pow(s, 0.55);
-    document.querySelectorAll('.climb-marker').forEach(m => {
-        const c = m.querySelector('circle');
-        if (c) {
-            c.setAttribute('r', (BASE_R * f).toFixed(2));
-            c.setAttribute('stroke-width', (BASE_STROKE * f).toFixed(2));
-        }
-        const t = m.querySelector('text');
-        if (t) t.setAttribute('font-size', (BASE_FONT * f).toFixed(2));
-    });
+// Same pan/zoom engine as the main map (shared module, no CDN):
+// one translate+scale transform on #map-content, clamped after
+// every update, so zooming into a corner keeps the point under
+// the cursor instead of flinging the wall off-screen, and the
+// edges always stay inside the viewport. Double-tap zoom stays
+// off here: hurried taps must never reframe the wall mid-edit.
+// Zoom is progressive enhancement: if the module failed to load,
+// the markers and edit panel below still work unzoomed.
+function paintMarkers(scale) {
+    if (!window.WallView) return;
+    window.WallView.rescaleMarkers(document, scale);
 }
-if (pz) pz.on('transform', rescaleMarkers);
-rescaleMarkers();
+const wallZoom = window.WallView ? window.WallView.create({
+    viewport: document.getElementById('map-viewport'),
+    content: document.getElementById('map-content'),
+    doubleTap: false,
+    onTransform: paintMarkers,
+}) : null;
+paintMarkers(wallZoom ? wallZoom.getScale() : 1);
 
 const panel = document.getElementById('climb-edit-panel');
 const placeHint = document.getElementById('place-hint');
@@ -186,6 +178,20 @@ function svgPoint(evt) {
     pt.x = evt.clientX;
     pt.y = evt.clientY;
     return pt.matrixTransform(svg.getScreenCTM().inverse());
+}
+
+// Markers stay inside the wall photo (overlay units, minus the
+// marker radius) so a drag or placement can never strand one
+// off-map where it can't be recovered. Same bounds the server
+// enforces on save.
+const MAP_W = {{ map_width }};
+const MAP_H = {{ map_height }};
+const MARK_R = 7;
+function clampPt(p) {
+    return {
+        x: Math.min(Math.max(p.x, MARK_R), MAP_W - MARK_R),
+        y: Math.min(Math.max(p.y, MARK_R), MAP_H - MARK_R),
+    };
 }
 
 // The tag picks the grade shortlist — pick the tape first, then the
@@ -236,11 +242,31 @@ function setGradeOptions(tag, prefer) {
     paintTagHint(tag);
 }
 
-// Hold colours: tap a swatch or pick anything custom. The stored
-// value stays a plain CSS colour, same as before.
-const HOLD_COLOURS = ['red', 'blue', 'yellow', 'green', 'purple',
-    'orange', 'pink', 'white', 'black', 'lime', 'teal', 'cyan',
-    'magenta', 'brown', 'grey', 'navy', 'maroon', 'coral'];
+// Hold colours in rainbow order: the bold shades run across the
+// top row and each row below gets duller, neutrals last, then the
+// Custom hex picker underneath. The stored value stays a plain CSS
+// colour, same as before (brown is dark orange; maroon dark red).
+// Tape presets that have no CSS name (wood, bright orange, tape
+// cyan) store their tape hex, so boards and logs name them right.
+const HOLD_COLOURS = [
+    // Row 1: bold rainbow.
+    'red', 'orange', '#ff7a00', 'yellow', 'lime', '#22b8cf', 'blue',
+    'magenta', 'hotpink',
+    // Row 2: mid tones.
+    'indianred', 'coral', 'khaki', 'green', 'cornflowerblue', 'orchid', 'pink',
+    // Row 3: dull shades.
+    'maroon', 'brown', '#a06a35', 'olive', 'darkgreen', 'navy', 'purple',
+    'palevioletred',
+    // Row 4: neutrals.
+    'white', 'grey', 'black'];
+
+// Display names for the tape-hex swatches above (aria labels only;
+// the stored value stays the hex).
+const HOLD_LABELS = {
+    '#ff7a00': 'bright orange',
+    '#22b8cf': 'cyan',
+    '#a06a35': 'wood',
+};
 
 function toHex(name) {
     try {
@@ -265,7 +291,7 @@ function renderSwatches(current) {
         b.className = 'swatch' + (c.toLowerCase() === String(current).toLowerCase() ? ' sel' : '');
         b.style.background = c;
         b.dataset.colour = c;
-        b.setAttribute('aria-label', c);
+        b.setAttribute('aria-label', HOLD_LABELS[c.toLowerCase()] || c);
         b.addEventListener('click', () => setColour(c));
         box.appendChild(b);
     });
@@ -315,15 +341,49 @@ function openPanel(id, x, y, climb = {}) {
     document.getElementById('f-wall').value = climb.wall || INSPECTOR_WALL;
     document.getElementById('f-active').checked = !id || climb.active !== "0";
     document.getElementById('f-delete').style.display = id ? "inline-flex" : "none";
+    // Bottom sheet: show, then slide up into view (the transition
+    // needs a frame between display and the class).
     panel.style.display = "block";
+    void panel.offsetWidth;
+    panel.classList.add("open");
 }
 
 function closePanel() {
-    panel.style.display = "none";
+    // Slide back down first so the sheet never just blinks out.
+    panel.classList.remove("open");
+    panel.style.transform = "";
+    window.setTimeout(() => {
+        if (!panel.classList.contains("open")) {
+            panel.style.display = "none";
+        }
+    }, 300);
     activeId = null;
     pendingCoords = null;
     pendingSet = null;
 }
+
+// Grabber: drag the sheet down to close it, same as the map sheet.
+(function () {
+    const grip = document.getElementById('panel-grabber');
+    let startY = null, dy = 0;
+    grip.addEventListener('touchstart', (e) => {
+        startY = e.touches[0].clientY;
+        dy = 0;
+        panel.style.transition = 'none';
+    }, {passive: true});
+    grip.addEventListener('touchmove', (e) => {
+        if (startY === null) return;
+        dy = Math.max(0, e.touches[0].clientY - startY);
+        panel.style.transform = 'translateY(' + dy + 'px)';
+    }, {passive: true});
+    grip.addEventListener('touchend', () => {
+        panel.style.transition = '';
+        panel.style.transform = '';
+        if (dy > 90) closePanel();
+        startY = null;
+        dy = 0;
+    });
+})();
 
 // Arming: "Add climb" sticks a pointer to the cursor; the next wall
 // click places the climb straight into that set.
@@ -378,7 +438,7 @@ svg.addEventListener('pointerup', (e) => {
     const held = Date.now() - wallDown.t;
     wallDown = null;
     if (moved > 12 || held > 600) return;
-    const p = svgPoint(e);
+    const p = clampPt(svgPoint(e));
     if (armedSet) {
         pendingSet = armedSet;
         openPanel(null, p.x, p.y, {wall: INSPECTOR_WALL});
@@ -405,11 +465,11 @@ function setupMarker(marker) {
         const move = (moveEvt) => {
             if (!dragging && Math.hypot(moveEvt.clientX - startX, moveEvt.clientY - startY) < 4) return;
             dragging = true;
-            if (pz && !paused && pz.pause) {
-                pz.pause();
+            if (wallZoom && !paused) {
+                wallZoom.pause();
                 paused = true;
             }
-            const p = svgPoint(moveEvt);
+            const p = clampPt(svgPoint(moveEvt));
             // Move the ring and its grade label together, or the label
             // lies about where the climb was saved.
             circle.setAttribute('cx', p.x);
@@ -423,13 +483,13 @@ function setupMarker(marker) {
             window.removeEventListener('pointermove', move);
             window.removeEventListener('pointerup', up);
             window.removeEventListener('pointercancel', cancel);
-            if (paused && pz && pz.resume) pz.resume();
+            if (paused && wallZoom) wallZoom.resume();
         };
         const up = (upEvt) => {
             window.removeEventListener('pointermove', move);
             window.removeEventListener('pointerup', up);
             window.removeEventListener('pointercancel', cancel);
-            if (paused && pz && pz.resume) pz.resume();
+            if (paused && wallZoom) wallZoom.resume();
             const id = marker.dataset.id;
             const x = parseFloat(circle.getAttribute('cx'));
             const y = parseFloat(circle.getAttribute('cy'));

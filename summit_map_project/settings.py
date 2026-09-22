@@ -95,6 +95,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'summit_map_project.context_processors.version',
             ],
         },
     },
@@ -165,6 +166,105 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = Path(os.environ.get("DJANGO_MEDIA_PATH", BASE_DIR / 'media'))
 LOGIN_REDIRECT_URL = "climbs:map"
 LOGOUT_REDIRECT_URL = "climbs:map"
+
+# Points config (see climbs/scoring.py). Grade mode is one of "flat",
+# "gentle" (default) or "linear". The tries table maps tries to a
+# multiplier on ONE line; tries at/above the top key all score the top
+# key's value (hard floor, never lower).
+POINTS_GRADE_MODE = "gentle"
+POINTS_TRIES_MULTIPLIERS = {1: 1.00, 2: 0.99, 3: 0.98, 4: 0.96, 5: 0.94}
+
+# Anti-cheat flagging (see climbs/anticheat.py). Every rule threshold
+# lives in this ONE dict. Statistical (peer-comparison) rules only fire
+# once min_users_for_peer_stats users exist; below that the absolute
+# thresholds alone apply.
+ANTI_CHEAT = {
+    # Peer stats need ~5+ users before z-style comparisons mean
+    # anything.
+    "min_users_for_peer_stats": 5,
+    # 1. High flash rate: >= min_sends sends with >= threshold flashes,
+    # or >= peer_margin above the peer flash rate at the same grades.
+    "flash_rate_min_sends": 8,
+    "flash_rate_threshold": 0.90,
+    "flash_rate_peer_margin": 0.40,
+    "flash_rate_min_grade_sends": 3,
+    # 2. Big-grade flash: flash >= gap above the user's previous best
+    # non-flash send, or a flash on a first-ever send at >= high_grade.
+    "big_grade_gap": 2,
+    "big_grade_high": 6,
+    # 3. Flash vs community: climb has >= min_ascents ascents with a
+    # community flash rate below low_rate; >= repeat such flashes flags.
+    "community_flash_min_ascents": 5,
+    "community_flash_low_rate": 0.20,
+    "community_flash_repeat": 2,
+    # 4. Tries vs peers: user's average tries across >= min_shared
+    # climbs shared with others is >= margin below the others' average.
+    "tries_peer_min_shared": 3,
+    "tries_peer_margin": 2.0,
+    # 5. Impossible pace: a log arriving sooner after the previous one
+    # than minutes_per_attempt x claimed tries, or >= pace_count logs
+    # inside pace_window_minutes.
+    "minutes_per_attempt": 2.0,
+    "pace_count": 5,
+    "pace_window_minutes": 30,
+    # 6. Bulk or odd-hours: >= bulk_per_minute logs sharing one minute,
+    # or logs outside gym_open_hour_start..gym_open_hour_end (24h).
+    # The gym opens 10:00 and closes 22:00.
+    "bulk_per_minute": 3,
+    "gym_open_hour_start": 10,
+    "gym_open_hour_end": 22,
+    # 7. Tries edited downward after logging (from the audit table).
+    "edit_down_points": 10,
+    "edit_down_rank_points": 20,
+    # 8. Rapid rank jump: >= points_24h gained in 24h (and above peers
+    # when enough users exist), or a new account (< new_account_days
+    # old) reaching the top 3.
+    "rank_jump_points_24h": 1500,
+    "new_account_days": 7,
+    # 9. Send-rate outlier: per-user per-day sessions with >=
+    # min_sends are measured in sends/minute (first-to-last log that
+    # day, floor 1 minute) and compared against the gym-wide
+    # distribution; above the percentile flags. Too few sessions
+    # gym-wide: the absolute per-minute rate applies instead.
+    "send_rate_min_sends": 5,
+    "send_rate_percentile": 0.95,
+    "send_rate_min_sessions": 10,
+    "send_rate_absolute_per_min": 2.0,
+    # 10. Grade pace floor: expected minutes per attempt grow with the
+    # grade (base + per_grade x grade number); a send logged sooner
+    # after the previous log than tries x that floor flags. 10 V0s
+    # in an hour is normal, 10 V5s is not.
+    "grade_pace_base_minutes": 1.5,
+    "grade_pace_per_grade_minutes": 0.5,
+    # 11. Flash drift: the last window_sends sends flash at a rate >=
+    # margin above the user's earlier baseline (>= min_history sends),
+    # and harder when that window burst in within burst_days.
+    "flash_drift_window_sends": 10,
+    "flash_drift_min_history": 10,
+    "flash_drift_margin": 0.35,
+    "flash_drift_burst_days": 7,
+    # 12. Grade-jump velocity: max grade logged in the last jump_days
+    # >= jump_grades above the user's earlier max (>= min_history
+    # older sends, so new accounts aren't punished for starting).
+    "grade_jump_days": 7,
+    "grade_jump_grades": 3,
+    "grade_jump_min_history": 5,
+    # 13. Session clustering: a day with >= min_sends whose median
+    # gap between logs is under median_gap_seconds reads as
+    # batch-logged after the fact — real sessions have rest gaps.
+    "cluster_min_sends": 8,
+    "cluster_median_gap_seconds": 90,
+    # 14. Peer z-score: the user's mean sends per visit (user-day)
+    # against the gym-wide mean/stdev of the same, needing >=
+    # min_days of visits so one great day never flags — only a
+    # pattern of outlier days.
+    "z_min_days": 5,
+    "z_threshold": 2.0,
+    # Prevention: max ascents one user may log per hour.
+    "ascent_rate_limit_per_hour": 30,
+    # Suspicion score caps at 100.
+    "suspicion_cap": 100,
+}
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration

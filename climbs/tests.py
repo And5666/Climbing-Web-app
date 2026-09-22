@@ -163,31 +163,188 @@ class AscentApiTests(ClimbTestMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("Already logged", response.json()["error"])
 
-    def test_tries_capped_at_five(self):
+    def test_tries_cap_at_five_plus(self):
+        # Tries run 1–5 and the top step means 5+: anything higher is
+        # rejected. Scoring already floors there, so 5 scores the
+        # same as any higher count ever stored.
         user = self.make_user("capped")
         climb = self.make_climb(grade="V4")
         self.client.force_login(user)
         response = self.client.post(
             reverse("climbs:climb-ascent", args=[climb.id]),
-            json.dumps({"tries": 9}), content_type="application/json")
+            json.dumps({"tries": 5}), content_type="application/json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["tries"], 5)
         self.assertEqual(response.json()["points"],
                          calculate_points("V4", 5))
-
-    def test_points_cap_at_five_tries(self):
         self.assertEqual(calculate_points("V4", 5),
                          calculate_points("V4", 9))
-        self.assertEqual(calculate_points("V4", 5), round(400 * 0.6))
+        ascent = Ascent.objects.get(user=user, climb=climb)
+        self.assertEqual(ascent.tries, 5)
+        for bad in (6, 9, 100):
+            with self.subTest(tries=bad):
+                other = self.make_climb(name=f"Over {bad}")
+                denied = self.client.post(
+                    reverse("climbs:climb-ascent", args=[other.id]),
+                    json.dumps({"tries": bad}),
+                    content_type="application/json")
+                self.assertEqual(denied.status_code, 400)
 
     def test_bad_tries_rejected(self):
         user = self.make_user("badtry")
         climb = self.make_climb()
         self.client.force_login(user)
-        response = self.client.post(
-            reverse("climbs:climb-ascent", args=[climb.id]),
-            json.dumps({"tries": 0}), content_type="application/json")
-        self.assertEqual(response.status_code, 400)
+        for bad in (0, -3, 6):
+            with self.subTest(tries=bad):
+                response = self.client.post(
+                    reverse("climbs:climb-ascent", args=[climb.id]),
+                    json.dumps({"tries": bad}),
+                    content_type="application/json")
+                self.assertEqual(response.status_code, 400)
+        self.assertEqual(Ascent.objects.count(), 0)
+
+    def test_high_legacy_tries_display_as_five_plus(self):
+        # Rows logged above 5 before the cap still display as 5+.
+        # (The user log is staff-only.)
+        user = self.make_user("legacy", staff=True)
+        climb = self.make_climb()
+        self.client.force_login(user)
+        climb.ascents.create(user=user, tries=9,
+                             points=calculate_points("V4", 9))
+        response = self.client.get(
+            reverse("climbs:user-log", args=["legacy"]))
+        self.assertContains(response, "<td>5+</td>")
+
+
+class ScoringTests(ClimbTestMixin, TestCase):
+    def test_example_checks(self):
+        # Spec examples: a V4 flash is 400, a V4 send on 5+ tries 376.
+        self.assertEqual(calculate_points("V4", 1), 400)
+        self.assertEqual(calculate_points("V4", 5), 376)
+
+    def test_tries_multipliers(self):
+        self.assertEqual(calculate_points("V4", 1), 400)
+        self.assertEqual(calculate_points("V4", 2), round(400 * 0.99))
+        self.assertEqual(calculate_points("V4", 3), round(400 * 0.98))
+        self.assertEqual(calculate_points("V4", 4), round(400 * 0.96))
+        self.assertEqual(calculate_points("V4", 5), round(400 * 0.94))
+
+    def test_harder_grade_beats_easier_flash(self):
+        # Grade always beats tries: a V8 worked for 5+ tries outscores
+        # a flash V7, and generally the 5+ floor of any grade beats a
+        # flash one grade below it (gentle and linear modes).
+        self.assertGreater(
+            calculate_points("V8", 5), calculate_points("V7", 1))
+        for mode in ("gentle", "linear"):
+            for n in range(10):
+                self.assertGreater(
+                    calculate_points(f"V{n + 1}", 9, grade_mode=mode),
+                    calculate_points(f"V{n}", 1, grade_mode=mode),
+                    f"V{n + 1} at 5+ should beat a flash V{n} ({mode})")
+
+    def test_tries_floor_never_lower(self):
+        # Hard floor at 5+: 6 tries and 40 tries score the same.
+        five = calculate_points("V4", 5)
+        self.assertEqual(calculate_points("V4", 6), five)
+        self.assertEqual(calculate_points("V4", 40), five)
+
+    def test_grade_modes(self):
+        self.assertEqual(
+            calculate_points("V4", 1, grade_mode="flat"), 300)
+        self.assertEqual(
+            calculate_points("V0", 1, grade_mode="flat"), 300)
+        self.assertEqual(
+            calculate_points("V0", 1, grade_mode="gentle"), 200)
+        self.assertEqual(
+            calculate_points("V8", 1, grade_mode="gentle"), 600)
+        self.assertEqual(
+            calculate_points("V0", 1, grade_mode="linear"), 100)
+        self.assertEqual(
+            calculate_points("V4", 1, grade_mode="linear"), 500)
+        # Unknown modes fall back to the gentle default.
+        self.assertEqual(
+            calculate_points("V4", 1, grade_mode="bogus"), 400)
+
+    def test_mystery_and_unknown_grades_score_flat(self):
+        self.assertEqual(
+            calculate_points("V6", 1, tag="mystery"),
+            MYSTERY_FIXED_POINTS)
+        self.assertEqual(
+            calculate_points("V6", 5, tag="mystery"),
+            MYSTERY_FIXED_POINTS)
+        # Unrated/'?' climbs keep the old shape: a flat 300 base with
+        # the normal tries multiplier (not the old try penalty).
+        self.assertEqual(
+            calculate_points("?", 1), MYSTERY_FIXED_POINTS)
+        self.assertEqual(
+            calculate_points("bogus", 3), round(300 * 0.98))
+
+    def test_points_use_official_grade_not_suggestions(self):
+        # A community suggestion must not move the score: the ascent
+        # scores from the climb's stored grade.
+        user = self.make_user("official")
+        other = self.make_user("suggester")
+        climb = self.make_climb(grade="V4")
+        climb.grade_suggestions.create(
+            user=other, suggested_grade="V8")
+        climb.ascents.create(user=user, tries=1)
+        ascent = Ascent.objects.get(user=user, climb=climb)
+        self.assertEqual(ascent.points, calculate_points("V4", 1))
+        self.assertNotEqual(ascent.points, calculate_points("V8", 1))
+
+    def test_recalc_points_recomputes_from_stored_grade_and_tries(self):
+        from django.core.management import call_command
+
+        user = self.make_user("stale")
+        climb = self.make_climb(grade="V4")
+        ascent = climb.ascents.create(user=user, tries=5, points=1)
+        stamp = ascent.logged_at
+        call_command("recalc_points")
+        ascent.refresh_from_db()
+        self.assertEqual(ascent.points, calculate_points("V4", 5))
+        # Tries and timestamps are never touched.
+        self.assertEqual(ascent.tries, 5)
+        self.assertEqual(ascent.logged_at, stamp)
+
+    def test_recalculated_values_feed_boards_stats_and_profile(self):
+        # Leaderboard, stats and profile all aggregate live points,
+        # so a recalc flows everywhere with no other change.
+        from django.core.management import call_command
+        alice = self.make_user("recevery")
+        climb = self.make_climb(name="Every", grade="V4", wall="main")
+        climb.ascents.create(user=alice, tries=5, points=1)
+        call_command("recalc_points")
+        board = self.client.get(reverse("climbs:leaderboard"))
+        walls = {w["wall"]: w for w in board.context["walls"]}
+        self.assertEqual(walls["main"]["rows"][0]["total_points"],
+                         calculate_points("V4", 5))
+        self.client.force_login(alice)
+        profile = self.client.get(reverse("accounts:profile"))
+        self.assertContains(
+            profile,
+            f'<span class="stat-num">{calculate_points("V4", 5)}</span>')
+        stats = self.client.get(reverse("accounts:stats"))
+        self.assertContains(stats, str(calculate_points("V4", 5)))
+
+    def test_recalc_points_is_idempotent_and_reports(self):
+        import io
+
+        from django.core.management import call_command
+
+        user = self.make_user("idempotent")
+        climb = self.make_climb(grade="V4")
+        climb.ascents.create(
+            user=user, tries=2, points=calculate_points("V4", 2))
+        out = io.StringIO()
+        call_command("recalc_points", stdout=out)
+        self.assertIn("0 changed", out.getvalue())
+        Ascent.objects.filter(user=user).update(points=7)
+        out = io.StringIO()
+        call_command("recalc_points", stdout=out)
+        self.assertIn("1 changed", out.getvalue())
+        self.assertEqual(
+            Ascent.objects.get(user=user).points,
+            calculate_points("V4", 2))
 
 
 class RatingAndGradeTests(ClimbTestMixin, TestCase):
@@ -374,15 +531,52 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
                 self.assertIn('<button type="submit" name="wall"', region)
                 self.assertNotIn("<a ", region)
 
-    def test_quick_colours_cover_more_tape(self):
+    def test_hold_colours_run_rainbow_bold_to_dull(self):
+        # Rainbow rows: the bold shades run across the top and each
+        # row below gets duller, neutrals last, then the Custom hex
+        # picker underneath. Stored values stay plain CSS colours in
+        # a hidden field.
+        from climbs.models import TAPE_COLOURS, TAPE_FAMILIES
+        self.assertGreaterEqual(len(TAPE_COLOURS), 40)
+        flat = [n for _, names in TAPE_FAMILIES for n in names]
+        self.assertEqual(
+            sorted(flat), sorted(n for n, _ in TAPE_COLOURS))
         staff = self.make_user("swatches", staff=True)
         self.client.force_login(staff)
         response = self.client.get(reverse("climbs:climb-admin"))
-        for colour in ("teal", "cyan", "magenta", "brown",
-                       "grey", "navy", "maroon", "coral"):
-            self.assertContains(response, f"'{colour}'")
-        # The custom picker stays alongside the swatches.
+        content = response.content.decode()
+        self.assertContains(response, 'id="f-swatches"')
+        self.assertContains(response, "HOLD_COLOURS")
+        import re
+        names = re.search(
+            r"const HOLD_COLOURS = \[(.*?)\];", content,
+            re.DOTALL).group(1)
+        self.assertEqual(re.findall(r"'([a-z]+)'", names), [
+            'red', 'orange', 'yellow', 'lime', 'blue', 'magenta',
+            'hotpink',
+            'indianred', 'coral', 'khaki', 'green',
+            'cornflowerblue', 'orchid', 'pink',
+            'maroon', 'brown', 'olive', 'darkgreen', 'navy', 'purple',
+            'palevioletred',
+            'white', 'grey', 'black'])
+        # Tape presets with no CSS name ride along as hexes: bright
+        # orange and tape cyan in the bold row, wood beside brown.
+        for hex_value in ("'#ff7a00'", "'#22b8cf'", "'#a06a35'"):
+            self.assertIn(hex_value, names)
+        self.assertIn("wood", flat)
+        self.assertIn("bright orange", flat)
+        # The custom hex picker stays for one-offs.
         self.assertContains(response, 'type="color"')
+        self.assertContains(response, 'id="f-colour"')
+        # Big boxes in a grid filling the panel width — no inner
+        # scroll column.
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        grid = css.split("#f-swatches {")[1].split("}")[0]
+        self.assertIn("display: grid", grid)
+        self.assertIn("minmax(54px", grid)
+        self.assertNotIn("overflow", grid)
 
     def test_seed_demo_builds_five_months(self):
         from django.core.management import call_command
@@ -713,8 +907,8 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
     def test_stats_collapse_empty_rows_and_swatch_unnamed(self):
         # Sends but no ratings or votes: empty stat rows collapse
         # instead of showing "—", unnamed climbs show a colour
-        # swatch instead of a raw hex code, and the graph lists
-        # only grades that actually have sends.
+        # swatch plus the colour NAME (never a raw hex), and the
+        # graph lists only grades that actually have sends.
         from climbs.models import ClimbSet
         user = self.make_user("sparse")
         sent = Climb.objects.create(
@@ -735,7 +929,9 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
         self.assertNotContains(response, '<span class="muted">—</span>')
         self.assertContains(response, 'class="colour-dot"')
         self.assertContains(response, 'style="background:#c9265f"')
-        self.assertContains(response, "#c9265f</button>")
+        # The swatch keeps the true colour; the text names it.
+        self.assertContains(response, ">magenta</button>")
+        self.assertNotContains(response, "#c9265f</button>")
         css_path = finders.find("climbs/style.css")
         with open(css_path) as f:
             css = f.read()
@@ -1079,7 +1275,8 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(
             response,
             f"{old.created_at.day} {old.created_at.strftime('%b %Y')}")
-        # The tag drives the grade shortlist; colours are picked.
+        # The tag drives the grade shortlist; colours come from
+        # family-grouped swatches, Custom keeping the hex picker.
         self.assertContains(response, "GRADES_BY_TAG")
         self.assertContains(response, "blue: ['V4', 'V5']")
         self.assertContains(response, 'id="f-swatches"')
@@ -1092,35 +1289,78 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             selected, f'<g class="climb-marker" data-id="{new_climb.id}"')
 
     def test_climb_panel_fits_small_screens(self):
-        # The bottom-docked edit panel caps itself to the viewport
-        # and scrolls inside, so it never runs off the top of a
-        # phone screen.
+        # The edit panel is a bottom sheet: docked to the bottom
+        # edge, capped below full height (vh fallback first for
+        # browsers without dvh) with the form scrolling inside, so
+        # every swipe on it scrolls the sheet — never the map behind
+        # it. A sticky grabber drags it back down.
         css_path = finders.find("climbs/style.css")
         with open(css_path) as f:
             css = f.read()
-        block = css.split("#climb-edit-panel")[1].split("}")[0]
-        self.assertIn("max-height", block)
-        self.assertIn("100dvh", block)
+        block = css.split("#climb-edit-panel {")[1].split("}")[0]
+        self.assertIn("position: fixed", block)
+        self.assertIn("bottom: 0", block)
+        self.assertIn("85vh", block)
+        self.assertIn("85dvh", block)
         self.assertIn("overflow-y: auto", block)
+        self.assertIn("touch-action: pan-y", block)
+        self.assertIn("overscroll-behavior: contain", block)
+        self.assertIn("translateY(103%)", block)
+        self.assertIn("safe-area-inset-bottom", block)
+        opened = css.split("#climb-edit-panel.open {")[1].split("}")[0]
+        self.assertIn("transform: none", opened)
+        grabber = css.split(
+            "#climb-edit-panel .grabber {")[1].split("}")[0]
+        self.assertIn("touch-action: none", grabber)
+        # The grabber scrolls away with the sheet content — it must
+        # never pin itself over the fields below it.
+        self.assertNotIn("sticky", grabber)
+        self.assertNotIn("fixed", grabber)
+
+    def test_panel_opens_as_bottom_sheet(self):
+        # Phones: the edit sheet slides up into view when it opens
+        # and drags down to dismiss, so reaching it never means
+        # dragging the map.
+        staff = self.make_user("panelview", staff=True)
+        self.client.force_login(staff)
+        response = self.client.get(reverse("climbs:climb-admin"))
+        self.assertContains(response, 'id="panel-grabber"')
+        self.assertContains(response, 'class="grab-pill"')
+        # Critical positioning rides inline so the sheet shows even
+        # when the stylesheet is stale or missing; the animation and
+        # details enhance from CSS.
+        self.assertContains(
+            response, "position:fixed; left:0; right:0; bottom:0")
+        self.assertContains(response, 'panel.classList.add("open")')
+        self.assertContains(response, 'panel.classList.remove("open")')
+        self.assertContains(response, "if (dy > 90) closePanel();")
 
     def test_admin_map_supports_zoom_for_fine_placement(self):
         # The admin wall zooms (wheel/pinch) so markers can be placed
-        # precisely: pan/zoom wiring, markers that hold their
-        # on-screen size while zoomed, and marker drags that pause
-        # the pan layer instead of fighting it. No on-map zoom
-        # buttons: they went unused.
+        # precisely, through the same shared wall-view.js module as
+        # the main map: markers hold their on-screen size while
+        # zoomed, and marker drags pause the pan layer instead of
+        # fighting it. Zoom is progressive enhancement: without the
+        # module the editor still works unzoomed. Double-tap zoom
+        # stays off so hurried taps never reframe the wall mid-edit.
+        # No on-map zoom buttons: they went unused.
         staff = self.make_user("zoomadmin", staff=True)
         self.client.force_login(staff)
         response = self.client.get(reverse("climbs:climb-admin"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "panzoom")
+        self.assertContains(response, "climbs/wall-view.js")
+        self.assertContains(response, "window.WallView ? window.WallView.create")
+        self.assertContains(response, "WallView.create")
+        self.assertContains(response, "map-content")
+        self.assertContains(response, "doubleTap: false")
+        self.assertNotContains(response, "panzoom")
         self.assertNotContains(response, "data-zoom-in")
         self.assertNotContains(response, "data-zoom-out")
         self.assertNotContains(response, "data-zoom-reset")
         self.assertNotContains(response, "zoom-controls")
-        self.assertContains(response, "Math.pow(s, 0.55)")
-        self.assertContains(response, "pz.pause")
-        self.assertContains(response, "pz.resume")
+        self.assertContains(response, "WallView.rescaleMarkers")
+        self.assertContains(response, "wallZoom.pause")
+        self.assertContains(response, "wallZoom.resume")
         css_path = finders.find("climbs/style.css")
         with open(css_path) as f:
             css = f.read()
@@ -1158,6 +1398,53 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             reverse("climbs:board-admin") + f"?wall=main&set={draft.id}")
         self.assertContains(
             response, f"/admin-tools/climbs/?wall=main&set={draft.id}")
+
+    def test_markers_clamp_inside_the_wall(self):
+        # Dragging past the photo edge clamps back inside (minus the
+        # marker radius) instead of stranding the marker off-map.
+        from climbs.models import clamp_to_wall
+        self.assertEqual(clamp_to_wall(-50, 600), (7, 505))
+        self.assertEqual(clamp_to_wall(500, -20), (249, 7))
+        self.assertEqual(clamp_to_wall(30.5, 40.5), (30.5, 40.5))
+        staff = self.make_user("clamper", staff=True)
+        self.client.force_login(staff)
+        create = self.client.post(
+            reverse("climbs:climb-create"),
+            json.dumps({"grade": "V2", "wall": "main",
+                        "x_percent": 999, "y_percent": -5}),
+            content_type="application/json")
+        self.assertEqual(create.status_code, 200)
+        climb = Climb.objects.get(id=create.json()["id"])
+        self.assertEqual((climb.x_percent, climb.y_percent), (249, 7))
+        move = self.client.post(
+            reverse("climbs:climb-update", args=[climb.id]),
+            json.dumps({"x_percent": -30, "y_percent": 999}),
+            content_type="application/json")
+        self.assertEqual(move.status_code, 200)
+        climb.refresh_from_db()
+        self.assertEqual((climb.x_percent, climb.y_percent), (7, 505))
+        # The coordinate system is unchanged: plain viewBox units.
+        self.assertTrue(0 <= climb.x_percent <= 256)
+        self.assertTrue(0 <= climb.y_percent <= 512)
+
+    def test_clamp_markers_command_lists_and_fixes(self):
+        import io
+
+        from django.core.management import call_command
+
+        stray = Climb.objects.create(
+            name="Stray", grade="V2", tag="red", colour="red",
+            wall="main", climb_set=ClimbSet.active("main"),
+            x_percent=400.0, y_percent=-40.0)
+        out = io.StringIO()
+        call_command("clamp_markers", stdout=out)
+        stray.refresh_from_db()
+        self.assertEqual((stray.x_percent, stray.y_percent), (249, 7))
+        self.assertIn("Stray", out.getvalue())
+        self.assertIn("Clamped 1 climbs", out.getvalue())
+        out = io.StringIO()
+        call_command("clamp_markers", stdout=out)
+        self.assertIn("Clamped 0 climbs", out.getvalue())
 
     def test_move_climb_round_trips_to_map(self):
         # Dragging a marker in admin saves coordinates the main map
@@ -1382,8 +1669,13 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(response, 'id="sheet-body"')
         self.assertContains(response, 'class="sheet-scrim"')
         self.assertContains(response, 'id="sheet-grabber"')
-        # Finger-sized invisible hit area around every marker.
-        self.assertContains(response, "climb-hit")
+        # Finger-sized invisible hit area around every marker: owned
+        # by the shared module, constant on-screen size at any zoom.
+        module = finders.find("climbs/wall-view.js")
+        with open(module) as f:
+            js = f.read()
+        self.assertIn("climb-hit", js)
+        self.assertIn("HIT_R = 20", js)
         # Sheet header names the wall in text; comments collapse.
         self.assertContains(response, "wall-line")
         self.assertContains(response, "comments-box")
@@ -1448,8 +1740,8 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             user=user, tries=1, points=calculate_points("V4", 1))
         self.client.force_login(user)
         response = self.client.get(reverse("climbs:map"))
-        # Inner circles keep the setter's tape colour.
-        self.assertContains(response, 'fill="red"')
+        # Inner circles keep the setter's tape colour (renderable hex).
+        self.assertContains(response, 'fill="#e03131"')
         content = response.content.decode()
         sent_pos = content.index(f'data-climb-id="{sent.id}"')
         sent_window = content[sent_pos:sent_pos + 1200]
@@ -1473,11 +1765,17 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(response, 'id="grade-filter"')
         self.assertContains(response, f'data-grade="V4"')
         self.assertContains(response, "applyMarkerFilter")
-        # Markers shrink a little when zoomed out (softer counter-scale).
-        self.assertContains(response, "Math.pow(s, 0.55)")
+        # Markers shrink a little when zoomed out (the shared
+        # module's softer counter-scale, constant-size tap target).
+        self.assertContains(response, "WallView.rescaleMarkers")
+        module = finders.find("climbs/wall-view.js")
+        with open(module) as f:
+            js = f.read()
+        self.assertIn("Math.pow(scale, 0.55)", js)
+        self.assertIn("climb-hit", js)
         # The grade label scales in lockstep with the ring (same factor)
         # and is sized so the widest grade always sits inside it.
-        self.assertContains(response, "BASE_FONT = 7")
+        self.assertIn("BASE_FONT", js)
         css_path = finders.find("climbs/style.css")
         with open(css_path) as f:
             css = f.read()
@@ -1670,21 +1968,49 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         sheet = response.content.decode().split('id="climb-popup"')[1]
         self.assertNotIn("<select", sheet)
         self.assertContains(response, "t-minus")
+        self.assertContains(response, "Math.min(5, tries + 1)")
+        self.assertContains(response, "5+ tries")
+        self.assertContains(response, "tries >= 5 ? '5+'")
+        self.assertNotContains(response, "Math.min(99")
         self.assertContains(response, "data-dir")
         self.assertContains(response, "p-more-comments")
         self.assertContains(response, "set-switcher")
 
-    def test_zoom_settle_resharpens_markers(self):
-        # Regression: after a wheel/pinch zoom the markers stayed soft
-        # until the next pan committed a fresh transform. Wheel/pinch
-        # fire no end event, so the template debounces the transform
-        # stream and replays the cure automatically: a sub-pixel snap
-        # through panzoom's own moveTo, aligned to device pixels.
-        response = self.client.get(reverse("climbs:map"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "sharpenAfterZoom")
-        self.assertContains(response, "devicePixelRatio")
-        self.assertContains(response, "pz.moveTo(x, y)")
+    def test_pages_keep_their_working_zoom(self):
+        # The main map zooms through the wall-view.js module: single
+        # translate+scale transform (origin 0 0) on the one container
+        # holding photo + overlay, zoom around the pointer/pinch
+        # centre, pan clamped after every update, pointer events,
+        # non-passive wheel, rAF batching, no CSS transitions while
+        # gesturing, bounds recomputed on resize / orientation /
+        # image load. The admin editor zooms through the same
+        # shared module on its own viewport instead of panzoom.
+        module = finders.find("climbs/wall-view.js")
+        self.assertIsNotNone(module)
+        with open(module) as f:
+            js = f.read()
+        for token in ("transform-origin", "requestAnimationFrame",
+                      "zoomAt", "clampPan", "touchAction",
+                      "passive: false", "orientationchange",
+                      "MAX_SCALE = 8", "Double-tap zoom",
+                      "pinch centre", "OVERSCROLL"):
+            self.assertIn(token, js)
+        self.client.logout()
+        content = self.client.get(reverse("climbs:map")).content.decode()
+        self.assertIn("climbs/wall-view.js", content)
+        self.assertIn("WallView.create", content)
+        self.assertIn("map-content", content)
+        self.assertNotIn("panzoom.min.js", content)
+        self.assertNotIn("settleNudge", content)
+        self.assertNotIn("sharpenAfterZoom", content)
+        staff = self.make_user("sharedzoom", staff=True)
+        self.client.force_login(staff)
+        admin = self.client.get(
+            reverse("climbs:climb-admin")).content.decode()
+        self.assertIn("climbs/wall-view.js", admin)
+        self.assertIn("WallView.create", admin)
+        self.assertIn("map-content", admin)
+        self.assertNotIn("panzoom", admin)
 
     def test_marker_geometry_has_no_css_transition(self):
         # A stroke-width transition animates marker geometry on every
@@ -1775,53 +2101,932 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             css = f.read()
         self.assertRegex(css, r"#climb-layer\s*\{[^}]*position\s*:\s*absolute")
 
-    def test_overlapping_markers_offer_picker(self):
-        # Close-together markers overlap, so the topmost one always won
-        # the tap. The map must ship a chooser: markers carry the name
-        # and colour it needs, and a tap near several markers lists
-        # every candidate instead of opening just one.
+    def test_tap_opens_the_tapped_marker(self):
+        # Each marker's collider is exactly its visible dot — the old
+        # fat invisible halo opened climbs on near-miss taps and
+        # flashed a tap box around itself in Chromium. Now the release
+        # point must sit inside a dot (real on-screen box, so zoom/pan
+        # are accounted for); overlapping dots resolve to whichever
+        # sits on top, and a tap inside no dot opens nothing. No
+        # chooser, no tap box, no focus ring.
         first = self.make_climb(name="Near One", x=50.0, y=100.0)
         second = self.make_climb(name="Near Two", x=50.5, y=100.5)
         response = self.client.get(reverse("climbs:map"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="marker-picker"')
-        self.assertContains(response, 'id="picker-list"')
-        self.assertContains(response, 'id="picker-close"')
-        self.assertContains(response, "nearbyMarkers")
-        self.assertContains(response, "showPicker")
-        self.assertContains(response, "PICK_RADIUS")
+        self.assertNotContains(response, 'id="marker-picker"')
+        self.assertNotContains(response, "nearbyMarkers")
+        self.assertNotContains(response, "showPicker")
+        self.assertNotContains(response, "PICK_RADIUS")
+        self.assertNotContains(response, "climb-hit")
+        self.assertContains(response, "const target = climbAt(e.clientX, e.clientY)")
+        self.assertContains(response, "if (target) await openClimb(target.dataset.climbId)")
+        self.assertContains(response, "if (!hit || !hit.inside) return;")
+        import re
+        climb_fn = re.search(
+            r"function climbAt\(x, y\) \{.*?\n        \}",
+            response.content.decode(), re.DOTALL).group(0)
+        self.assertNotIn("nearest", climb_fn)
+        self.assertNotIn("fallback", climb_fn)
+        self.assertNotIn("bestD", climb_fn)
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        marker = css.split(".climb-marker {")[1].split("}")[0]
+        self.assertIn("-webkit-tap-highlight-color: transparent", marker)
+        self.assertIn("outline: none", marker)
+        layer = css.split("#climb-layer {")[-1].split("}")[0]
+        self.assertIn("-webkit-tap-highlight-color: transparent", layer)
+        self.assertContains(response, "getBoundingClientRect")
+        self.assertContains(response, "querySelector('.climb-dot')")
+        self.assertContains(response, "bringToFront")
         for climb in (first, second):
             self.assertContains(response, f'data-climb-id="{climb.id}"')
-            self.assertContains(
-                response, f'data-name="{climb.name}"')
-            self.assertContains(response, 'data-colour="red"')
         css_path = finders.find("climbs/style.css")
         self.assertIsNotNone(css_path)
         with open(css_path) as f:
             css = f.read()
-        self.assertIn("#marker-picker", css)
-        self.assertIn("#marker-picker .pick", css)
+        self.assertNotIn("#marker-picker", css)
+        module = finders.find("climbs/wall-view.js")
+        with open(module) as f:
+            js = f.read()
+        self.assertIn("bringToFront", js)
+        self.assertIn("climb-hit", js)
+
+    def test_pages_survive_zoom_module_failure(self):
+        # If wall-view.js fails to load, the main map still works
+        # unzoomed: marker taps and the sheet never depend on it. The
+        # admin editor likewise works unzoomed without the module:
+        # taps, the panel, placement and dragging never depend on it.
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(response, "window.WallView ? window.WallView.create")
+        self.assertContains(response, "if (!window.WallView) return;")
+        staff = self.make_user("fallback", staff=True)
+        self.client.force_login(staff)
+        admin = self.client.get(reverse("climbs:climb-admin"))
+        self.assertContains(admin, "window.WallView ? window.WallView.create")
+
+    def test_colour_picker_cannot_recurse(self):
+        # Regression: opening the panel with an unknown stored colour
+        # re-rendered the swatch grid until the page hung and every
+        # marker tap died. setColour only ever writes the hidden
+        # value and toggles selection — it never rebuilds the grid.
+        import re
+        src = open("climbs/templates/climbs/climb_admin.html").read()
+        script = re.search(
+            r"<script>\nconst svg =[\s\S]*?</script>", src).group(0)
+        body = script.split("function setColour", 1)[1]
+        body = body.split(
+            "document.getElementById('f-picker')", 1)[0]
+        code = re.sub(r"//[^\n]*", "", body)
+        self.assertNotIn("renderSwatches", code)
+        self.assertNotIn("innerHTML", code)
+        self.assertIn("getElementById('f-colour').value = c", code)
+
+    def test_review_tables_stay_on_screen(self):
+        # Wide flag evidence and action buttons wrap in their cells
+        # and the tables scroll sideways: nothing pushes the page
+        # off-screen on phones.
+        staff = self.make_user("tablesize", staff=True)
+        self.client.force_login(staff)
+        user = self.make_user("tableuser")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        board = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(board, 'class="table-wrap"')
+        log = self.client.get(reverse("climbs:user-log", args=["tableuser"]))
+        self.assertContains(log, 'class="table-wrap"')
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        wrap = css.split(".table-wrap {")[1].split("}")[0]
+        self.assertIn("overflow-x: auto", wrap)
+        actions = css.split(".flag-actions {")[1].split("}")[0]
+        self.assertIn("flex-wrap: wrap", actions)
+        evidence = css.split(".flag-list li p {")[1].split("}")[0]
+        self.assertIn("overflow-wrap: anywhere", evidence)
+
+    def test_board_actions_live_inside_the_table(self):
+        # The Remove / Hide-from-board buttons sit in the row's own
+        # Actions cell (labelled header, wrapping button group), not
+        # floating outside the table.
+        import re
+        staff = self.make_user("boardbuttons", staff=True)
+        self.client.force_login(staff)
+        user = self.make_user("buttonuser")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        response = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(response, "<th>Actions</th>")
+        content = response.content.decode()
+        row = re.search(
+            r"<tr>[\s\S]*?buttonuser[\s\S]*?</tr>",
+            content).group(0)
+        cell = re.search(
+            r"<td>\s*<div class=\"flag-actions\">[\s\S]*?</div>\s*</td>",
+            row).group(0)
+        self.assertIn("data-hide-user", cell)
+        self.assertIn("data-remove-user", cell)
+
+    def test_board_admin_reads_at_a_glance(self):
+        # The review board scans fast: a rank column, a header line
+        # with climber/send/review totals, filters that apply on
+        # change, and a clear-filters escape when filtered.
+        staff = self.make_user("reviewux", staff=True)
+        self.client.force_login(staff)
+        user = self.make_user("glanceuser")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        response = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(response, '<th class="rank">#</th>')
+        self.assertContains(response, "1 climber")
+        self.assertContains(response, "1 send")
+        self.assertContains(response, "need review")
+        self.assertContains(response, "e.target.form.submit()")
+        flagged = self.client.get(
+            reverse("climbs:board-admin") + "?flagged=1")
+        self.assertContains(flagged, "Clear")
+
+    def test_suspicion_filter_narrows_rows(self):
+        # The board filters by the suspicion badge, not severity: a
+        # threshold keeps only rows whose shown open flags add up to
+        # at least that many points. Badges still total what is shown.
+        from climbs.models import Flag
+        staff = self.make_user("suspstaff", staff=True)
+        self.client.force_login(staff)
+        climb = self.make_climb()
+        mild = self.make_user("milduser")
+        climb.ascents.create(user=mild, tries=1,
+                             points=calculate_points("V4", 1))
+        Flag.objects.create(
+            user=mild, rule_code="low_rule", severity="low",
+            points=5, details={"summary": "mild"})
+        wild = self.make_user("wilduser")
+        climb.ascents.create(user=wild, tries=1,
+                             points=calculate_points("V4", 1))
+        Flag.objects.create(
+            user=wild, rule_code="high_rule_a", severity="high",
+            points=30, details={"summary": "spicy"})
+        Flag.objects.create(
+            user=wild, rule_code="high_rule_b", severity="high",
+            points=30, details={"summary": "extra spicy"})
+        plain = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(plain, "milduser")
+        self.assertContains(plain, "wilduser")
+        self.assertContains(plain, "⚑ 60")
+        strict = self.client.get(
+            reverse("climbs:board-admin") + "?suspicion=50")
+        self.assertContains(strict, "wilduser")
+        self.assertNotContains(strict, "milduser")
+        self.assertContains(strict, "⚑ 60")
+        loose = self.client.get(
+            reverse("climbs:board-admin") + "?suspicion=20")
+        self.assertContains(loose, "wilduser")
+        self.assertNotContains(loose, "milduser")
+        self.assertContains(loose, "Clear")
+
+    def test_flag_numbers_explain_themselves(self):
+        # The badge total and each flag's weight are labelled: the
+        # badge title says what suspicion adds up to, every flag
+        # shows its own +N pts, and a legend line states the cap.
+        from climbs.models import Flag
+        staff = self.make_user("ptsstaff", staff=True)
+        self.client.force_login(staff)
+        user = self.make_user("ptsuser")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        Flag.objects.create(
+            user=user, rule_code="high_flash_rate", severity="high",
+            points=30, details={"summary": "9/10 sends were flashes"})
+        response = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(response, "⚑ 30")
+        self.assertContains(response, "+30 pts")
+        self.assertContains(response, "capped at 100")
+        self.assertContains(response, "Suspicion 30")
+
+    def test_review_many_marks_open_reviewed(self):
+        # One action clears a row's open flags with a single note;
+        # already-closed flags are skipped and reported. Staff
+        # only, like the single-flag API.
+        from climbs.models import Flag, ModerationLog
+        user = self.make_user("bulkuser")
+        open_one = Flag.objects.create(
+            user=user, rule_code="rule_a", severity="low",
+            points=5, details={"summary": "a"})
+        open_two = Flag.objects.create(
+            user=user, rule_code="rule_b", severity="high",
+            points=30, details={"summary": "b"})
+        closed = Flag.objects.create(
+            user=user, rule_code="rule_c", severity="low",
+            points=5, details={"summary": "c"}, status="reviewed")
+        url = reverse("climbs:flags-review-many")
+        payload = {"ids": [open_one.id, open_two.id, closed.id],
+                   "note": "looks fine"}
+        logged_out = self.client.post(
+            url, json.dumps(payload), content_type="application/json")
+        self.assertEqual(logged_out.status_code, 404)
+        staff = self.make_user("bulkstaff", staff=True)
+        self.client.force_login(staff)
+        bad = self.client.post(
+            url, json.dumps({"ids": []}),
+            content_type="application/json")
+        self.assertEqual(bad.status_code, 400)
+        response = self.client.post(
+            url, json.dumps(payload), content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok", "reviewed": 2,
+                                           "skipped": 1})
+        for flag_id in (open_one.id, open_two.id):
+            flag = Flag.objects.get(id=flag_id)
+            self.assertEqual(flag.status, "reviewed")
+            self.assertEqual(flag.note, "looks fine")
+            self.assertEqual(flag.reviewed_by, staff)
+        self.assertTrue(ModerationLog.objects.filter(
+            action="flag_reviewed",
+            details__flag_id=open_one.id).exists())
+        board = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(board, "data-review-all")
+
+    def test_admin_page_clamps_drags_in_script(self):
+        # Drags and placements clamp inside the wall photo (the same
+        # bounds the server enforces), so a marker can never be
+        # stranded off-map where it can't be recovered.
+        staff = self.make_user("clampscript", staff=True)
+        self.client.force_login(staff)
+        response = self.client.get(reverse("climbs:climb-admin"))
+        self.assertContains(response, "clampPt(svgPoint(moveEvt))")
+        self.assertContains(response, "clampPt(svgPoint(e))")
+
+    def test_admin_tap_opens_panel_not_drag_save(self):
+        # Marker taps open the edit panel, never a stray save: past
+        # 4px of movement the gesture becomes a drag (the pan layer
+        # paused, the new position saved on release), otherwise the
+        # release opens the panel. Wall taps use 12px / 600ms.
+        import re
+        src = open("climbs/templates/climbs/climb_admin.html").read()
+        script = re.search(
+            r"<script>\nconst svg =[\s\S]*?</script>", src).group(0)
+        self.assertIn("marker.addEventListener('pointerdown'", script)
+        self.assertIn("moveEvt.clientX - startX", script)
+        self.assertIn("< 4) return;", script)
+        self.assertIn("wallZoom.pause();", script)
+        self.assertIn("wallZoom.resume();", script)
+        self.assertIn("openPanel(id, x, y, marker.dataset);", script)
+        self.assertIn("if (moved > 12 || held > 600) return;", script)
+
+    def test_admin_inline_script_parses(self):
+        # Regression: a dropped brace in the panel code failed the
+        # whole script block to parse, silently killing zoom, taps,
+        # drags and placement together. The rendered page script
+        # must parse (skipped where node is unavailable).
+        import os
+        import re
+        import shutil
+        import subprocess
+        import tempfile
+        if shutil.which("node") is None:
+            self.skipTest("node unavailable")
+        staff = self.make_user("jsparse", staff=True)
+        self.client.force_login(staff)
+        content = self.client.get(
+            reverse("climbs:climb-admin")).content.decode()
+        script = re.search(
+            r"<script>\nconst svg =.*?</script>", content,
+            re.DOTALL).group(0)
+        script = script.replace("<script>", "").replace(
+            "</script>", "")
+        with tempfile.NamedTemporaryFile(
+                "w", suffix=".js", delete=False) as f:
+            f.write(script)
+            path = f.name
+        try:
+            proc = subprocess.run(
+                ["node", "--check", path], capture_output=True,
+                text=True, timeout=60)
+        finally:
+            os.unlink(path)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_taps_reach_markers_and_sends_stay_put(self):
+        # Regression: the shared module grabbed the pointer on every
+        # pointerdown, retargeting pointerup to the viewport so marker
+        # taps did nothing. Capture now waits for a real drag, and
+        # logging a send updates the sheet in place (no reload).
+        module = finders.find("climbs/wall-view.js")
+        with open(module) as f:
+            js = f.read()
+        pointerdown = js.split("addEventListener('pointerdown'")[1]
+        self.assertNotIn("setPointerCapture", pointerdown.split(
+            "addEventListener('pointermove'")[0])
+        self.assertIn("moved > 12", js)
+        response = self.client.get(reverse("climbs:map"))
+        self.assertNotContains(response, "location.reload()")
+        self.assertContains(response, "SENT_IDS.add(parseInt(id, 10))")
+        self.assertContains(response, "SENT_IDS.delete(parseInt(id, 10))")
+        self.assertContains(response, "await refreshPopup()")
+
+    def test_admin_map_comes_first_on_phones(self):
+        # The climb list pushed the map far down on phones: below
+        # 900px the map block orders first, inspector below, lifted
+        # clear of the screen edge with system-bar clearance.
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        block = css.split("@media (max-width: 899px)")[1].split("}")[0]
+        self.assertIn(".admin-main", block)
+        self.assertIn("order", block)
+        self.assertIn("-1", block)
+        phone = css.split("@media (max-width: 899px)")[1].split(
+            "@media")[0]
+        self.assertIn(".admin-layout", phone)
+        self.assertIn("padding-bottom", phone)
+        self.assertIn("safe-area-inset-bottom", phone)
 
     def test_deep_zoom_stays_put(self):
-        # Zooming deep flung the map across the screen and dropped
-        # the zoom on phones and desktops: panzoom got a re-entrant
-        # nudge mid-gesture, full-speed pinches on chaotic touch
-        # spans, and the browser fighting it for two-finger touches.
+        # Zooming into a corner once jumped the image off-screen: the
+        # old stack transform, stale bounds and a re-entrant nudge
+        # mid-gesture fought the pointer. The shared module clamps
+        # the pan after every update (smaller axes centred, larger
+        # axes kept inside), zooms around the pointer/pinch centre,
+        # and never re-enters a transform mid-gesture.
         response = self.client.get(reverse("climbs:map"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "pinchSpeed")
-        self.assertContains(response, "settleNudge")
-        self.assertContains(response, "mapPointerDown")
-        self.assertContains(response, "lastTransformAt")
+        self.assertContains(response, "WallView.create")
+        self.assertContains(response, "map-content")
+        self.assertNotContains(response, "panzoom")
+        module = finders.find("climbs/wall-view.js")
+        with open(module) as f:
+            js = f.read()
+        self.assertIn("clampPan", js)
+        self.assertIn("keep the edges inside", js)
         # Intended behaviour stays: bounded pan/zoom at up to 8x.
-        self.assertContains(response, "bounds: true")
-        self.assertContains(response, "maxZoom: 8")
+        self.assertIn("MAX_SCALE = 8", js)
         css_path = finders.find("climbs/style.css")
         self.assertIsNotNone(css_path)
         with open(css_path) as f:
             css = f.read()
         stack_block = css.split("#map-stack")[1].split("}")[0]
         self.assertIn("touch-action: none", stack_block)
+        content_block = css.split("#map-content")[1].split("}")[0]
+        self.assertIn("transform-origin: 0 0", content_block)
+        self.assertIn("transition: none", content_block)
+
+    def test_map_zooms_out_past_fit(self):
+        # The main map zooms out a little past the fit-to-wall scale
+        # so the whole wall sits in view with space around it.
+        module = finders.find("climbs/wall-view.js")
+        with open(module) as f:
+            js = f.read()
+        self.assertIn("0.8 * Math.min(1", js)
+
+
+class AntiCheatTests(ClimbTestMixin, TestCase):
+    def make_climbs(self, n, grade="V3", wall="main"):
+        return [self.make_climb(name=f"AC{i}", grade=grade, wall=wall)
+                for i in range(n)]
+
+    def test_log_and_undo_write_audit_rows(self):
+        from climbs.models import AscentAudit
+        user = self.make_user("audited")
+        climb = self.make_climb()
+        self.client.force_login(user)
+        url = reverse("climbs:climb-ascent", args=[climb.id])
+        self.client.post(url, json.dumps({"tries": 2}),
+                         content_type="application/json")
+        create = AscentAudit.objects.get(user=user, action="create")
+        self.assertEqual(create.new_tries, 2)
+        self.assertEqual(create.new_grade, "V4")
+        self.assertEqual(create.actor, user)
+        self.assertIsNotNone(create.created_at)
+        self.client.delete(url)
+        delete = AscentAudit.objects.get(user=user, action="delete")
+        self.assertEqual(delete.old_tries, 2)
+        self.assertEqual(delete.actor, user)
+
+    def test_high_flash_rate_flags(self):
+        from climbs.anticheat import suspicion_score
+        user = self.make_user("flasher")
+        for climb in self.make_climbs(8):
+            climb.ascents.create(user=user, tries=1,
+                                 points=calculate_points("V3", 1))
+        from django.core.management import call_command
+        call_command("recompute_flags")
+        flags = user.flags.filter(status="open",
+                                  rule_code="high_flash_rate")
+        self.assertTrue(flags.exists())
+        self.assertEqual(flags.first().severity, "high")
+        self.assertLessEqual(suspicion_score(user), 100)
+
+    def test_tries_edited_down_flags_from_audit(self):
+        from climbs.models import Ascent, AscentAudit
+        user = self.make_user("editor")
+        climb = self.make_climb()
+        ascent = climb.ascents.create(
+            user=user, tries=8, points=calculate_points("V4", 8))
+        AscentAudit.objects.create(
+            user=user, ascent=ascent, climb=climb, actor=user,
+            action="edit", old_tries=8,
+            new_tries=2, old_grade="V4", new_grade="V4",
+            old_points=calculate_points("V4", 8),
+            new_points=calculate_points("V4", 2))
+        self.assertEqual(Ascent.objects.count(), 1)
+        from django.core.management import call_command
+        call_command("recompute_flags")
+        self.assertTrue(user.flags.filter(
+            status="open", rule_code="tries_edited_down").exists())
+
+    def test_rate_limit_blocks_bulk_logging(self):
+        from django.test import override_settings
+        user = self.make_user("speedy")
+        self.client.force_login(user)
+        with override_settings(
+                ANTI_CHEAT={"ascent_rate_limit_per_hour": 2,
+                            "min_users_for_peer_stats": 5}):
+            for climb in self.make_climbs(2):
+                response = self.client.post(
+                    reverse("climbs:climb-ascent", args=[climb.id]),
+                    json.dumps({"tries": 1}),
+                    content_type="application/json")
+                self.assertEqual(response.status_code, 200)
+            third = self.make_climb(name="Third")
+            response = self.client.post(
+                reverse("climbs:climb-ascent", args=[third.id]),
+                json.dumps({"tries": 1}), content_type="application/json")
+            self.assertEqual(response.status_code, 429)
+
+    def test_void_excludes_from_board_but_stays_in_log(self):
+        from climbs.models import Ascent, ModerationLog
+        user = self.make_user("voided")
+        climb = self.make_climb()
+        ascent = climb.ascents.create(
+            user=user, tries=1, points=calculate_points("V4", 1))
+        staff = self.make_user("voidstaff", staff=True)
+        self.client.force_login(staff)
+        # Reason required.
+        no_reason = self.client.post(
+            reverse("climbs:ascent-void", args=[ascent.id]),
+            json.dumps({"void": True}), content_type="application/json")
+        self.assertEqual(no_reason.status_code, 400)
+        response = self.client.post(
+            reverse("climbs:ascent-void", args=[ascent.id]),
+            json.dumps({"void": True, "reason": "Needs review"}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        ascent.refresh_from_db()
+        self.assertTrue(ascent.is_voided)
+        # Off the public board and out of totals...
+        board = self.client.get(reverse("climbs:leaderboard"))
+        self.assertNotContains(board, "voided")
+        self.client.force_login(user)
+        profile = self.client.get(reverse("accounts:profile"))
+        self.assertContains(profile, '<span class="stat-num">0</span>')
+        # ...but still in logs, and the action is logged.
+        self.assertTrue(Ascent.objects.filter(id=ascent.id).exists())
+        self.assertTrue(ModerationLog.objects.filter(
+            action="void", username="voided").exists())
+        # Restore puts the points back.
+        self.client.force_login(staff)
+        self.client.post(
+            reverse("climbs:ascent-void", args=[ascent.id]),
+            json.dumps({"void": False}), content_type="application/json")
+        ascent.refresh_from_db()
+        self.assertFalse(ascent.is_voided)
+
+    def test_void_and_flag_apis_are_staff_only(self):
+        user = self.make_user("sneaky")
+        staff = self.make_user("sneakstaff", staff=True)
+        climb = self.make_climb()
+        ascent = climb.ascents.create(
+            user=user, tries=1, points=calculate_points("V4", 1))
+        from climbs.models import Flag
+        flag = Flag.objects.create(
+            user=user, rule_code="high_flash_rate", severity="high",
+            points=30, details={"summary": "x"})
+        for url, payload in (
+                (reverse("climbs:ascent-void", args=[ascent.id]),
+                 {"void": True, "reason": "x"}),
+                (reverse("climbs:flag-review", args=[flag.id]),
+                 {"status": "dismissed", "note": "x"}),
+                (reverse("climbs:user-hide", args=["sneaky"]),
+                 {"hidden": True}),
+                (reverse("climbs:user-log", args=["sneaky"]), None)):
+            with self.subTest(url=url):
+                self.client.logout()
+                response = (self.client.get(url) if payload is None
+                            else self.client.post(
+                                url, json.dumps(payload),
+                                content_type="application/json"))
+                self.assertEqual(response.status_code, 404)
+                self.client.force_login(user)
+                response = (self.client.get(url) if payload is None
+                            else self.client.post(
+                                url, json.dumps(payload),
+                                content_type="application/json"))
+                self.assertEqual(response.status_code, 404)
+        self.client.force_login(staff)
+        self.assertEqual(
+            self.client.get(
+                reverse("climbs:user-log", args=["sneaky"])).status_code,
+            200)
+
+    def test_flag_review_needs_note_and_logs(self):
+        from climbs.models import Flag, ModerationLog
+        user = self.make_user("reviewed")
+        flag = Flag.objects.create(
+            user=user, rule_code="high_flash_rate", severity="high",
+            points=30, details={"summary": "9/10 flashes"})
+        staff = self.make_user("reviewer", staff=True)
+        self.client.force_login(staff)
+        no_note = self.client.post(
+            reverse("climbs:flag-review", args=[flag.id]),
+            json.dumps({"status": "dismissed"}),
+            content_type="application/json")
+        self.assertEqual(no_note.status_code, 400)
+        response = self.client.post(
+            reverse("climbs:flag-review", args=[flag.id]),
+            json.dumps({"status": "dismissed",
+                        "note": "Checked footage, fine"}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        flag.refresh_from_db()
+        self.assertEqual(flag.status, "dismissed")
+        self.assertEqual(flag.reviewed_by, staff)
+        self.assertTrue(ModerationLog.objects.filter(
+            action="flag_dismissed", username="reviewed").exists())
+
+    def test_hide_user_from_board_and_restore(self):
+        user = self.make_user("limbo")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        staff = self.make_user("hider", staff=True)
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("climbs:user-hide", args=["limbo"]),
+            json.dumps({"hidden": True, "note": "Reviewing"}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        board = self.client.get(reverse("climbs:leaderboard"))
+        self.assertNotContains(board, "limbo")
+        self.client.post(
+            reverse("climbs:user-hide", args=["limbo"]),
+            json.dumps({"hidden": False}),
+            content_type="application/json")
+        board = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(board, "limbo")
+
+    def test_board_admin_shows_flags_and_filters(self):
+        from climbs.models import Flag
+        user = self.make_user("flagged")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        Flag.objects.create(
+            user=user, rule_code="high_flash_rate", severity="high",
+            points=30, details={"summary": "9/10 sends were flashes"})
+        staff = self.make_user("flagstaff", staff=True)
+        self.client.force_login(staff)
+        response = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(response, "Flags")
+        self.assertContains(response, "⚑ 30")
+        self.assertContains(response, "Needs review")
+        self.assertContains(response, "9/10 sends were flashes")
+        self.assertContains(response, "data-flag-dismiss")
+        self.assertContains(
+            response, reverse("climbs:user-log", args=["flagged"]))
+        flagged = self.client.get(
+            reverse("climbs:board-admin") + "?flagged=1")
+        self.assertContains(flagged, "flagged")
+        susp = self.client.get(
+            reverse("climbs:board-admin") + "?suspicion=20")
+        self.assertContains(susp, "flagged")
+
+    def test_user_log_page_and_csv(self):
+        from climbs.models import Flag
+        user = self.make_user("logged")
+        climb = self.make_climb(name="Logged Climb", grade="V4")
+        ascent = climb.ascents.create(
+            user=user, tries=2, points=calculate_points("V4", 2))
+        Flag.objects.create(
+            user=user, ascent=ascent, rule_code="big_grade_flash",
+            severity="medium", points=15,
+            details={"summary": "Flashed V4"})
+        staff = self.make_user("logstaff", staff=True)
+        self.client.force_login(staff)
+        response = self.client.get(
+            reverse("climbs:user-log", args=["logged"]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Logged Climb")
+        self.assertContains(response, "Europe/London")
+        self.assertContains(response, "red")
+        self.assertContains(response, "V4")
+        self.assertContains(response, "big_grade_flash")
+        self.assertContains(response, "Edit history")
+        csv_response = self.client.get(
+            reverse("climbs:user-log", args=["logged"]) + "?format=csv")
+        self.assertEqual(csv_response.status_code, 200)
+        self.assertIn("text/csv", csv_response["Content-Type"])
+        self.assertIn("Logged Climb",
+                      csv_response.content.decode())
+        flagged = self.client.get(
+            reverse("climbs:user-log", args=["logged"])
+            + "?flagged=flagged")
+        self.assertContains(flagged, "Logged Climb")
+        unflagged = self.client.get(
+            reverse("climbs:user-log", args=["logged"])
+            + "?flagged=unflagged")
+        self.assertNotContains(unflagged, "Logged Climb")
+
+    def test_odd_hours_follow_gym_opening_times(self):
+        # The gym opens 10:00–22:00: a 3am send needs review, a
+        # midday send does not.
+        import datetime
+
+        from django.utils.timezone import make_aware
+        user = self.make_user("nightowl")
+        climb = self.make_climb()
+        ascent = climb.ascents.create(
+            user=user, tries=2, points=calculate_points("V4", 2))
+        Ascent.objects.filter(id=ascent.id).update(
+            logged_at=make_aware(datetime.datetime(2026, 1, 15, 3, 0)))
+        from climbs.anticheat import refresh_user_flags
+        refresh_user_flags(user)
+        self.assertTrue(user.flags.filter(
+            status="open", rule_code="bulk_or_odd_hours").exists())
+        Ascent.objects.filter(id=ascent.id).update(
+            logged_at=make_aware(datetime.datetime(2026, 1, 15, 12, 0)))
+        refresh_user_flags(user)
+        self.assertFalse(user.flags.filter(
+            status="open", rule_code="bulk_or_odd_hours").exists())
+
+    def test_recompute_flags_command(self):
+        import io
+
+        from django.core.management import call_command
+
+        user = self.make_user("recomputed")
+        for climb in self.make_climbs(8):
+            climb.ascents.create(user=user, tries=1,
+                                 points=calculate_points("V3", 1))
+        out = io.StringIO()
+        call_command("recompute_flags", stdout=out)
+        self.assertIn("Checked", out.getvalue())
+        self.assertTrue(user.flags.filter(status="open").exists())
+        # Re-running regenerates open flags without duplicating
+        # reviewed history.
+        flag = user.flags.filter(status="open").first()
+        flag.status = "dismissed"
+        flag.save()
+        call_command("recompute_flags", stdout=out)
+        self.assertEqual(
+            user.flags.filter(status="dismissed").count(), 1)
+
+    def _log_series(self, user, climbs, start, step_seconds, tries=2):
+        import datetime
+
+        from django.utils.timezone import make_aware
+        for i, climb in enumerate(climbs):
+            ascent = climb.ascents.create(
+                user=user, tries=tries,
+                points=calculate_points(climb.grade, tries))
+            ts = make_aware(
+                start + datetime.timedelta(seconds=i * step_seconds))
+            Ascent.objects.filter(id=ascent.id).update(logged_at=ts)
+
+    def test_send_rate_outlier_flags_burst_day(self):
+        # 8 sends in 4 minutes (2/min) against slow peers flags;
+        # a slow day does not.
+        import datetime
+
+        from climbs.anticheat import refresh_user_flags
+        fast = self.make_user("bursty")
+        day = datetime.datetime(2026, 2, 10, 12, 0)
+        self._log_series(fast, self.make_climbs(8), day, 34)
+        for n in range(10):
+            peer = self.make_user(f"slowrate{n}")
+            for d in (10, 11):
+                self._log_series(
+                    peer, self.make_climbs(5),
+                    datetime.datetime(2026, 2, d, 12, 0), 2000)
+        refresh_user_flags(fast)
+        self.assertTrue(fast.flags.filter(
+            status="open", rule_code="send_rate_outlier").exists())
+        slow = self.make_user("slowday")
+        self._log_series(
+            slow, self.make_climbs(6),
+            datetime.datetime(2026, 2, 12, 12, 0), 2000)
+        refresh_user_flags(slow)
+        self.assertFalse(slow.flags.filter(
+            status="open", rule_code="send_rate_outlier").exists())
+
+    def test_grade_pace_floor_weights_hard_grades(self):
+        # V6 in 3 tries a minute after the previous send is under its
+        # grade floor; a V0 single try with room to breathe is not.
+        import datetime
+
+        from django.utils.timezone import make_aware
+        from climbs.anticheat import refresh_user_flags
+        user = self.make_user("pacefloor")
+        climbs = self.make_climbs(2, grade="V6")
+        first = climbs[0].ascents.create(
+            user=user, tries=3, points=calculate_points("V6", 3))
+        second = climbs[1].ascents.create(
+            user=user, tries=3, points=calculate_points("V6", 3))
+        Ascent.objects.filter(id=first.id).update(
+            logged_at=make_aware(datetime.datetime(2026, 3, 1, 12, 0)))
+        Ascent.objects.filter(id=second.id).update(
+            logged_at=make_aware(datetime.datetime(2026, 3, 1, 12, 1)))
+        refresh_user_flags(user)
+        self.assertTrue(user.flags.filter(
+            status="open", rule_code="grade_pace_floor").exists())
+        easy = self.make_user("easydoesit")
+        pair = self.make_climbs(2, grade="V0")
+        one = pair[0].ascents.create(
+            user=easy, tries=1, points=calculate_points("V0", 1))
+        two = pair[1].ascents.create(
+            user=easy, tries=1, points=calculate_points("V0", 1))
+        Ascent.objects.filter(id=one.id).update(
+            logged_at=make_aware(datetime.datetime(2026, 3, 1, 12, 0)))
+        Ascent.objects.filter(id=two.id).update(
+            logged_at=make_aware(datetime.datetime(2026, 3, 1, 12, 2)))
+        refresh_user_flags(easy)
+        self.assertFalse(easy.flags.filter(
+            status="open", rule_code="grade_pace_floor").exists())
+
+    def test_flash_drift_flags_sudden_spike(self):
+        # Ten project-free grinds then ten flashes in two days: a
+        # flash-rate spike paired with a burst. Steady climbers pass.
+        import datetime
+
+        from climbs.anticheat import refresh_user_flags
+        user = self.make_user("spiky")
+        self._log_series(
+            user, self.make_climbs(10),
+            datetime.datetime(2026, 1, 1, 12, 0), 86400, tries=3)
+        self._log_series(
+            user, self.make_climbs(10),
+            datetime.datetime(2026, 4, 1, 12, 0),
+            int(2 * 86400 / 9), tries=1)
+        refresh_user_flags(user)
+        self.assertTrue(user.flags.filter(
+            status="open", rule_code="flash_drift").exists())
+        steady = self.make_user("steady")
+        self._log_series(
+            steady, self.make_climbs(20),
+            datetime.datetime(2026, 1, 1, 12, 0), 86400, tries=2)
+        refresh_user_flags(steady)
+        self.assertFalse(steady.flags.filter(
+            status="open", rule_code="flash_drift").exists())
+
+    def test_grade_jump_velocity_flags_fast_progression(self):
+        # V2 history then V6 inside a week flags; V2 to V3 does not.
+        import datetime
+
+        from django.utils.timezone import make_aware
+        from climbs.anticheat import refresh_user_flags
+        user = self.make_user("rocketeer")
+        for i, climb in enumerate(self.make_climbs(6, grade="V2")):
+            ascent = climb.ascents.create(
+                user=user, tries=2, points=calculate_points("V2", 2))
+            Ascent.objects.filter(id=ascent.id).update(
+                logged_at=make_aware(
+                    datetime.datetime(2026, 1, 5, 12, 0)
+                    + datetime.timedelta(days=i)))
+        for grade in ("V5", "V6"):
+            climb = self.make_climb(name=f"Jump {grade}", grade=grade)
+            ascent = climb.ascents.create(
+                user=user, tries=2,
+                points=calculate_points(grade, 2))
+            Ascent.objects.filter(id=ascent.id).update(
+                logged_at=make_aware(
+                    datetime.datetime.now().replace(
+                        hour=12, minute=0, second=0,
+                        microsecond=0)))
+        refresh_user_flags(user)
+        self.assertTrue(user.flags.filter(
+            status="open",
+            rule_code="grade_jump_velocity").exists())
+        gradual = self.make_user("gradual")
+        for i, climb in enumerate(self.make_climbs(6, grade="V2")):
+            ascent = climb.ascents.create(
+                user=gradual, tries=2,
+                points=calculate_points("V2", 2))
+            Ascent.objects.filter(id=ascent.id).update(
+                logged_at=make_aware(
+                    datetime.datetime(2026, 1, 5, 12, 0)
+                    + datetime.timedelta(days=i)))
+        third = self.make_climb(name="Step", grade="V3")
+        ascent = third.ascents.create(
+            user=gradual, tries=2, points=calculate_points("V3", 2))
+        Ascent.objects.filter(id=ascent.id).update(
+            logged_at=make_aware(
+                datetime.datetime.now().replace(
+                    hour=12, minute=0, second=0, microsecond=0)))
+        refresh_user_flags(gradual)
+        self.assertFalse(gradual.flags.filter(
+            status="open",
+            rule_code="grade_jump_velocity").exists())
+
+    def test_session_clustering_flags_batch_logging(self):
+        # Eight sends ten seconds apart reads as logged after the
+        # fact; eight sends across a day reads as a real session.
+        import datetime
+
+        from climbs.anticheat import refresh_user_flags
+        batch = self.make_user("batchlogger")
+        self._log_series(
+            batch, self.make_climbs(8),
+            datetime.datetime(2026, 5, 1, 12, 0), 10)
+        refresh_user_flags(batch)
+        self.assertTrue(batch.flags.filter(
+            status="open",
+            rule_code="session_clustering").exists())
+        live = self.make_user("livesession")
+        self._log_series(
+            live, self.make_climbs(8),
+            datetime.datetime(2026, 5, 1, 10, 0), 1800)
+        refresh_user_flags(live)
+        self.assertFalse(live.flags.filter(
+            status="open",
+            rule_code="session_clustering").exists())
+
+    def test_peer_z_score_needs_a_pattern(self):
+        # Five 8-send visits against 1-send peers is a pattern, not
+        # one great day; the peers themselves stay clean.
+        import datetime
+
+        from django.utils.timezone import make_aware
+        from climbs.anticheat import refresh_user_flags
+        for n in range(12):
+            peer = self.make_user(f"zpeer{n}")
+            for d in (1, 2):
+                climbs = self.make_climbs(1)
+                ascent = climbs[0].ascents.create(
+                    user=peer, tries=2,
+                    points=calculate_points("V3", 2))
+                Ascent.objects.filter(id=ascent.id).update(
+                    logged_at=make_aware(
+                        datetime.datetime(2026, 6, d, 12, 0)))
+        star = self.make_user("zstar")
+        for d in range(1, 6):
+            self._log_series(
+                star, self.make_climbs(8),
+                datetime.datetime(2026, 6, d, 10, 0), 1800)
+        refresh_user_flags(star)
+        self.assertTrue(star.flags.filter(
+            status="open", rule_code="peer_z_score").exists())
+        peer = self.make_user("zoneoff")
+        self._log_series(
+            peer, self.make_climbs(2),
+            datetime.datetime(2026, 6, 1, 12, 0), 1800)
+        refresh_user_flags(peer)
+        self.assertFalse(peer.flags.filter(
+            status="open", rule_code="peer_z_score").exists())
+
+
+class ColourTests(ClimbTestMixin, TestCase):
+    def test_preset_names_and_hexes_resolve(self):
+        from climbs.models import colour_display_name
+        self.assertEqual(colour_display_name("orange"), "orange")
+        self.assertEqual(colour_display_name("#f08c00"), "orange")
+        self.assertEqual(colour_display_name("Sky Blue"), "sky blue")
+
+    def test_unknown_hex_resolves_to_nearest_never_raw(self):
+        from climbs.models import colour_display_name
+        self.assertEqual(colour_display_name("#c9265f"), "magenta")
+        self.assertNotIn(
+            "#", colour_display_name("#123456").replace("sky blue", ""))
+
+    def test_grade_text_contrasts(self):
+        from climbs.models import colour_text_on
+        self.assertEqual(colour_text_on("white"), "#000000")
+        self.assertEqual(colour_text_on("yellow"), "#000000")
+        self.assertEqual(colour_text_on("black"), "#ffffff")
+        self.assertEqual(colour_text_on("navy"), "#ffffff")
+
+    def test_admin_saves_preset_name(self):
+        staff = self.make_user("colourist", staff=True)
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("climbs:climb-create"),
+            json.dumps({"name": "", "grade": "V2", "tag": "red",
+                        "colour": "orange", "wall": "main",
+                        "x_percent": 10, "y_percent": 20}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        climb = Climb.objects.get(id=response.json()["id"])
+        self.assertEqual(climb.colour, "orange")
+        self.assertEqual(climb.colour_name, "orange")
+        # Once sent, the stats name the tape; no raw hex in labels.
+        climber = self.make_user("tangerine")
+        climb.ascents.create(user=climber, tries=1,
+                             points=calculate_points("V2", 1))
+        board = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(board, ">orange</button>")
+        self.assertNotContains(board, "#e03131</button>")
 
 
 class NewsTests(ClimbTestMixin, TestCase):

@@ -37,7 +37,8 @@ def _stats_months(user, metric, wall, months_back):
     """Monthly series for the stats graph. Grade runs cumulative
     (hardest to date, the progression curve); sends and points are
     per-month counts, with quiet months shown as zero."""
-    ascents = user.ascents.select_related("climb").order_by("logged_at")
+    ascents = user.ascents.filter(
+        is_voided=False).select_related("climb").order_by("logged_at")
     if wall != "all":
         ascents = ascents.filter(climb__wall=wall)
     ascents = list(ascents)
@@ -86,7 +87,7 @@ def _stats_months(user, metric, wall, months_back):
 
 def _grade_distribution(user, wall):
     """The user's sends stacked by grade, hardest last."""
-    ascents = user.ascents.select_related("climb")
+    ascents = user.ascents.filter(is_voided=False).select_related("climb")
     if wall != "all":
         ascents = ascents.filter(climb__wall=wall)
     counts = {}
@@ -135,10 +136,12 @@ def stats_view(request):
     span = request.GET.get("range", "12")
     if span not in ("6", "12", "all"):
         span = "12"
-    totals = request.user.ascents.aggregate(
-        sends=Count("id"), points=Sum("points"))
+    totals = request.user.ascents.filter(
+        is_voided=False).aggregate(sends=Count("id"), points=Sum("points"))
     grades = [grade_number(grade) for grade in
-              request.user.ascents.values_list("climb__grade", flat=True)]
+              request.user.ascents.filter(
+                  is_voided=False).values_list(
+                  "climb__grade", flat=True)]
     grades = [n for n in grades if n is not None]
     ranks = _wall_ranks(request.user)
     return render(request, "accounts/stats.html", {
@@ -164,8 +167,8 @@ def stats_view(request):
 
 @login_required
 def profile_view(request):
-    totals = request.user.ascents.aggregate(
-        sends=Count("id"), points=Sum("points"))
+    totals = request.user.ascents.filter(
+        is_voided=False).aggregate(sends=Count("id"), points=Sum("points"))
     ranks = _wall_ranks(request.user)
     password_form = PasswordChangeForm(request.user)
     # Django autofocuses the current-password field, which yanks the

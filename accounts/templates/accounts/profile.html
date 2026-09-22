@@ -87,6 +87,14 @@
             </form>
         </div>
 
+        <div class="sheet-section">
+            <h3>Log out</h3>
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+                <button class="btn btn-md btn-secondary" type="submit">Log out</button>
+            </form>
+        </div>
+
         <div class="sheet-section danger-zone">
             <h3>Delete account</h3>
             <p class="muted">Removes your profile, sends, ratings and comments. This can't be undone.</p>
@@ -99,6 +107,10 @@
             </form>
         </div>
     </section>
+    <footer class="profile-footer">
+        <span class="ver">Summit v{{ summit_version }}</span>
+        <a class="btn btn-sm btn-secondary" href="mailto:ac0566@proton.me">Contact ac0566@proton.me for any feedback or bugs</a>
+    </footer>
 </div>
 {% endblock %}
 

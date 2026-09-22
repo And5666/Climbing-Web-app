@@ -1014,13 +1014,51 @@ nav a:focus-visible,
     padding: 1.5rem;
 }
 
-/* The admin climb panel is bottom-docked: cap its height to the
-   viewport and scroll inside it, so it can never run off the top
-   of a phone screen. */
+/* The admin climb panel is a bottom sheet like the map's: docked
+   to the bottom edge, sliding up into view when it opens, with a
+   grabber to drag it back down. Capped below full height (vh first
+   as the fallback for browsers without dvh) with the form scrolling
+   inside, so every swipe on it scrolls the sheet — never the map
+   behind it. */
 #climb-edit-panel {
-    width: min(400px, calc(100vw - 2rem));
-    max-height: calc(100dvh - 2rem);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 200;
+    margin: 0 auto;
+    width: min(560px, 100vw);
+    max-height: 85vh;
+    max-height: 85dvh;
     overflow-y: auto;
+    touch-action: pan-y;
+    overscroll-behavior: contain;
+    border-radius: 12px 12px 0 0;
+    transform: translateY(103%);
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0.35, 1);
+    /* Clear the phone's own home/back buttons: the sheet runs edge
+       to edge, its content sits above the system bar. Browsers
+       without safe-area support use 0 and keep the form's own
+       padding; modern ones keep at least a finger's clearance even
+       where the OS reports no inset. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+#climb-edit-panel.open {
+    transform: none;
+}
+#climb-edit-panel .grabber {
+    padding: 0.65rem 1rem 0.35rem;
+    touch-action: none;
+    cursor: grab;
+}
+#climb-edit-panel .grab-pill {
+    display: block;
+    width: 48px;
+    height: 5px;
+    margin: 0 auto;
+    border-radius: var(--r-sm);
+    background: var(--border);
 }
 
 .auth-form h2 {
@@ -1159,11 +1197,12 @@ main {
     position: relative;
     width: 100%;
     height: 100%;
-    /* Panzoom owns every gesture on the scene: without this the
-       browser fights it for two-finger touches (native page
-       pinch/scroll vs panzoom) and the map jumps. The page itself
-       never scrolls and the sheet/panel live outside the stack,
-       so nothing else needs native touch handling here. */
+    /* The shared wall-view module owns every gesture on the scene:
+       without this the browser fights it for two-finger touches
+       (native page pinch/scroll vs pointer events) and the map
+       jumps. The page itself never scrolls and the sheet/panel live
+       outside the stack, so nothing else needs native touch
+       handling here. */
     touch-action: none;
 }
 
@@ -1172,6 +1211,10 @@ main {
     inset: 0;
     width: 100%;
     height: 100%;
+    /* The one transform (translate + scale) lives here, applied by
+       the shared module — never transition it, or gestures jump. */
+    transform-origin: 0 0;
+    transition: none;
 }
 
 /* Inlined wall diagram: vector under zoom, colours per theme.
@@ -1229,10 +1272,23 @@ main {
     cursor: pointer;
     /* No double-tap-zoom delay on phones; taps reach our handler fast. */
     touch-action: manipulation;
+    /* No tap box or focus ring in Chromium: the marker opens the
+       sheet itself, nothing may flash around it. Text inside markers
+       is never selectable either. */
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+    user-select: none;
+    -webkit-user-select: none;
     /* Hover smoothness lives here, never on circle geometry: animating
        stroke-width repaints markers on every zoom frame and leaves
        soft edges until the next style recalc. */
     transition: filter 0.15s ease;
+}
+/* Wall taps (placements) get the same treatment: no flash box. */
+#climb-layer {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .climb-marker:hover {
@@ -1248,100 +1304,9 @@ main {
         SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
-/* --- Overlap picker: when markers sit close together one tap point
-   covers several climbs, so the tap offers a short list instead of
-   always opening the topmost marker. Finger-sized rows, theme
-   surfaces, above the sheet scrim but below nothing else. */
-#marker-picker {
-    position: fixed;
-    z-index: 120;
-    max-width: min(300px, calc(100vw - 2rem));
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    box-shadow: var(--shadow);
-    padding: 0.6rem;
-}
-
-#marker-picker[hidden] {
-    display: none;
-}
-
-#marker-picker .picker-title {
-    margin: 0 0 0.4rem;
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
-}
-
-#marker-picker ul {
-    list-style: none;
-    margin: 0 0 0.4rem;
-    padding: 0;
-    max-height: 40vh;
-    overflow-y: auto;
-}
-
-#marker-picker li + li {
-    margin-top: 0.3rem;
-}
-
-#marker-picker .pick {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    width: 100%;
-    min-height: 48px;
-    padding: 0.5rem 0.6rem;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: var(--r-btn);
-    color: var(--text);
-    font: inherit;
-    font-weight: 700;
-    text-align: left;
-    cursor: pointer;
-}
-
-#marker-picker .pick:hover {
-    border-color: var(--accent);
-}
-
-#marker-picker .pick-dot {
-    flex-shrink: 0;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: 2px solid #fff;
-}
-
-#marker-picker .pick-label {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#marker-picker .pick-grade {
-    flex-shrink: 0;
-    font-size: 0.8rem;
-    color: var(--muted);
-}
-
-#marker-picker .picker-close {
-    width: 100%;
-    min-height: 44px;
-    background: transparent;
-    border: 1px solid var(--border);
-    border-radius: var(--r-btn);
-    color: var(--muted);
-    font: inherit;
-    font-weight: 700;
-    cursor: pointer;
-}
+/* Overlapping markers: the tap opens the tapped marker itself (the
+   hovered/pressed marker is raised to the front), so no chooser is
+   needed and close climbs stay directly tappable. */
 
 /* --- Bottom sheet (climb popup, phone-first) --- */
 #climb-popup {
@@ -1376,6 +1341,8 @@ main {
     bottom: 0;
     margin: 0 auto;
     max-width: 560px;
+    /* Same system-bar clearance as the admin sheet below. */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     max-height: 88dvh;
     display: flex;
     flex-direction: column;
@@ -1970,6 +1937,341 @@ ul.plain li {
     -webkit-overflow-scrolling: touch;
 }
 
+/* Leaderboard review tables: wide flag evidence and action buttons
+   wrap inside their cells and the table scrolls sideways, so the
+   page never runs off-screen on phones. */
+.flag-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 0.9rem;
+    align-items: end;
+    margin-bottom: 0.7rem;
+}
+
+.suspicion-badge {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    padding: 0.15rem 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+}
+
+.suspicion-badge.sev-high {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.suspicion-badge.sev-med {
+    color: var(--sand);
+    border-color: var(--sand);
+}
+
+.suspicion-badge.sev-low {
+    color: var(--muted);
+    border-color: var(--border-soft);
+}
+
+.flag-list {
+    min-width: 0;
+    margin-top: 0.3rem;
+}
+
+.flag-list summary {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    cursor: pointer;
+    color: var(--link);
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.flag-list ul {
+    list-style: none;
+    margin: 0.4rem 0 0;
+    padding: 0;
+}
+
+.flag-list li p {
+    margin: 0.3rem 0 0;
+    overflow-wrap: anywhere;
+}
+
+/* One flag, one card: rule + pills on top, evidence below,
+   review actions at the foot. Closed history stays quiet. */
+.flag-item {
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-sm);
+    background: var(--surface-2);
+    padding: 0.55rem 0.65rem;
+    margin-top: 0.45rem;
+}
+
+.flag-item.is-closed {
+    background: transparent;
+    opacity: 0.9;
+}
+
+.flag-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+}
+
+.flag-top strong {
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.flag-top .muted {
+    margin-left: auto;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+.flag-note {
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+/* A flag's own points: its weight in the ⚑ total. Tabular so a
+   column of them scans. */
+.flag-pts {
+    color: var(--sand);
+    border-color: var(--sand);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Small status pills used across the review board (hidden flag,
+   severity, decision). Theme colours only. */
+.pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+.pill-muted {
+    color: var(--muted);
+    border-color: var(--border-soft);
+}
+
+.sev-low {
+    color: var(--muted);
+    border-color: var(--border-soft);
+}
+
+.sev-medium {
+    color: var(--sand);
+    border-color: var(--sand);
+}
+
+.sev-high {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.st-open {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.st-reviewed,
+.st-dismissed {
+    color: var(--muted);
+    border-color: var(--border-soft);
+}
+
+.st-confirmed {
+    color: var(--ok);
+    border-color: var(--ok);
+}
+
+/* Review board header: set date plus climber / send / review
+   totals on one wrapping line under the title. */
+.review-head h3 {
+    margin-bottom: 0.35rem;
+}
+
+.review-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.55rem;
+    margin: 0 0 0.9rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.review-attn {
+    color: var(--danger);
+    font-weight: 800;
+}
+
+/* Filter toolbar: one band holding the checkbox pill, the two
+   selects and the buttons, so the controls read as a group. */
+.review-card .flag-filters {
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-sm);
+    padding: 0.6rem 0.75rem;
+    margin-bottom: 0.9rem;
+}
+
+.review-card .flag-filters > label {
+    margin: 0;
+}
+
+.review-card .flag-filters .btn {
+    width: auto;
+    margin-top: 0;
+}
+
+.review-card .filter-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 44px;
+    padding: 0 0.75rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font-size: 0.82rem;
+    text-transform: none;
+    letter-spacing: 0;
+    cursor: pointer;
+}
+
+.review-card .filter-check input {
+    width: 1.15rem;
+    height: 1.15rem;
+    accent-color: var(--accent);
+}
+
+.review-card .filter-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.review-card .filter-field select {
+    min-height: 44px;
+    padding: 0.4rem 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font: inherit;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* Review table: rank + right-aligned numbers, hover rows, and a
+   danger edge on rows with open flags so they stand out. */
+.review-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.review-table thead th {
+    color: var(--muted);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 0.5rem;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+}
+
+.review-table td {
+    padding: 0.6rem 0.5rem;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+}
+
+.review-table tbody tr:hover {
+    background: var(--surface-2);
+}
+
+.review-table tbody tr.has-flags td:first-child {
+    box-shadow: inset var(--bw) 0 0 var(--danger);
+}
+
+.review-table .rank {
+    width: 2.2rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.review-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.review-note {
+    margin-top: 0.8rem;
+}
+
+/* What the ⚑ numbers mean, in one line above the delete warning. */
+.review-legend {
+    margin-top: 0.8rem;
+    font-size: 0.85rem;
+}
+
+/* Empty board / filtered-to-nothing states. */
+.review-empty {
+    border: 1px dashed var(--border);
+    border-radius: var(--r-sm);
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: var(--muted);
+}
+
+.review-empty p {
+    margin: 0;
+}
+
+.review-empty .btn {
+    width: auto;
+    margin-top: 0.7rem;
+}
+
+@media (max-width: 600px) {
+    .review-table thead th,
+    .review-table td {
+        padding: 0.5rem 0.35rem;
+    }
+}
+
+.flag-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.flag-sev,
+.flag-status {
+    white-space: nowrap;
+}
+
 /* Ranking tables stay light: no outer grid, no cell dividers —
    just row separators and one strong header rule. */
 .board table {
@@ -2330,6 +2632,20 @@ ul.plain li {
     padding: 0.75rem 0.9rem 2.5rem;
 }
 
+/* Phones: the map comes first, so there is no long scroll past
+   the climb list to reach it. The inspector follows below, lifted
+   well clear of the phone's back/home buttons so its last row is
+   never stuck underneath them. */
+@media (max-width: 899px) {
+    .admin-main {
+        order: -1;
+    }
+
+    .admin-layout {
+        padding-bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+    }
+}
+
 .inspector {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -2541,20 +2857,26 @@ ul.plain li {
     padding: 0.5rem;
 }
 
+/* Hold-colour picker: rainbow rows (bold top, duller below) in a
+   grid that fills the panel width — big tap targets for phones,
+   no inner scroll; the panel itself scrolls. */
 #f-swatches {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(54px, 1fr));
+    gap: 0.5rem;
     margin-bottom: 0.6rem;
 }
 
 #f-swatches .swatch {
-    width: 44px;
-    height: 44px;
+    width: 100%;
+    height: 54px;
     border-radius: var(--r-sm);
     border: 2px solid var(--border-soft);
     cursor: pointer;
     padding: 0;
+    color: var(--text);
+    font-size: 1.1rem;
+    font-weight: 700;
 }
 
 #f-swatches .swatch.sel {
@@ -2854,6 +3176,28 @@ ul.plain li {
 
 .stats-link {
     margin: 0.9rem 0 0;
+}
+
+/* Profile footer: version stamp plus a feedback contact. */
+.profile-footer {
+    margin: 1.2rem 0 0;
+    padding: 0.8rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem 0.9rem;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.profile-footer .ver {
+    font-weight: 700;
+    color: var(--text);
 }
 
 .stats-link a {

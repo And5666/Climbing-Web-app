@@ -183,7 +183,7 @@ class Command(BaseCommand):
             for user in crew:
                 if rng.random() > chance - difficulty * 0.3:
                     continue
-                tries = min(5, 1 + int(rng.expovariate(0.8)))
+                tries = min(30, 1 + int(rng.expovariate(0.8)))
                 ascent = Ascent.objects.create(
                     user=user, climb=climb, tries=tries)
                 day = rng.randint(1, 28)

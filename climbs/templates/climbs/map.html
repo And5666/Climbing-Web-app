@@ -46,10 +46,8 @@
                      xmlns="http://www.w3.org/2000/svg">
                     {% for climb in climbs %}
                         <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}" data-name="{{ climb.name|escape }}" data-colour="{{ climb.colour }}">
-                            <circle class="climb-hit" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="20"
-                                    fill="rgba(0,0,0,0)"/>
                             <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
-                                    fill="{{ climb.colour }}" stroke="#ffffff" stroke-width="1.2"/>
+                                    fill="{{ climb.colour_hex }}" stroke="#ffffff" stroke-width="1.2"/>
                             <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
                                   text-anchor="middle" dominant-baseline="central"
                                   fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.display_grade|default:"?" }}</text>
@@ -58,12 +56,6 @@
                 </svg>
             </div>
         </div>
-    </div>
-
-    <div id="marker-picker" hidden>
-        <p class="picker-title" id="picker-title">Choose a climb</p>
-        <ul id="picker-list"></ul>
-        <button type="button" class="picker-close" id="picker-close">Close</button>
     </div>
 
     <div id="climb-popup" aria-hidden="true">
@@ -78,109 +70,27 @@
 {% endblock %}
 
 {% block scripts %}
-    <script src="https://unpkg.com/panzoom@9.4.3/dist/panzoom.min.js"></script>
+    <script src="{% static 'climbs/wall-view.js' %}"></script>
     <script>
-        const stack = document.getElementById('map-stack');
-        // Pan/zoom is progressive enhancement: if the CDN is unreachable the
-        // markers and popup below must still work.
-        const pz = window.panzoom ? panzoom(stack, {
-            maxZoom: 8,
-            minZoom: 0.5,
-            smoothScroll: false,
-            bounds: true,
-            boundsPadding: 0.1,
-            // Gentler pinch: when a finger lifts or touches reorder
-            // mid-pinch the span jumps and full speed turns that
-            // into a violent zoom. Half speed keeps pinches calm.
-            pinchSpeed: 0.5,
-        }) : null;
-
-        // Markers deliberately shrink a little when zoomed out and grow
-        // slower than the zoom level otherwise, so a wall of ~50 climbs
-        // stays readable. The grade label scales in lockstep with the
-        // ring and is sized so the widest grade (V10) always sits
-        // inside it: white with a dark halo, legible on any tape
-        // colour in any theme. The invisible hit circle keeps a
-        // constant on-screen size so markers stay finger-tappable on
-        // phones at any zoom.
-        const BASE_R = 7, BASE_FONT = 7, BASE_STROKE = 1.2, HIT_R = 20;
-        function rescaleMarkers() {
-            const s = pz ? pz.getTransform().scale : 1;
-            const f = 1 / Math.pow(s, 0.55);
-            document.querySelectorAll('.climb-marker').forEach(m => {
-                const c = m.querySelector('.climb-dot');
-                if (c) {
-                    // Every dot shares one silhouette; sent or not, the
-                    // ring rides along so rescales never flatten it.
-                    c.setAttribute('r', (BASE_R * f).toFixed(2));
-                    c.setAttribute('stroke-width', (BASE_STROKE * f).toFixed(2));
-                }
-                const hit = m.querySelector('.climb-hit');
-                if (hit) hit.setAttribute('r', (HIT_R * f).toFixed(2));
-                const t = m.querySelector('text');
-                if (t) t.setAttribute('font-size', (BASE_FONT * f).toFixed(2));
-            });
+        // Shared pan/zoom with the admin wall (one module, both
+        // pages): a single translate+scale transform on #map-content,
+        // which holds the photo and the SVG overlay together. If the
+        // module failed to load, the map still works unzoomed: markers
+        // and the sheet below must never depend on it.
+        function paintMarkers(scale) {
+            if (!window.WallView) return;
+            window.WallView.rescaleMarkers(document, scale);
+            window.WallView.applyMarkerContrast(document);
         }
-        if (pz) pz.on('transform', rescaleMarkers);
-        rescaleMarkers();
-
-        // A settled zoom can leave the markers looking soft until the
-        // next repaint — a small pan visibly "fixes" it, because only a
-        // new transform commits a fresh render of the zoom layer (a
-        // reflow read alone does not). Replay that cure automatically:
-        // snap the final translation to whole device pixels through
-        // panzoom itself. The shift is sub-pixel (invisible) and the
-        // fresh transform re-renders the layer crisply. Wheel/pinch
-        // fire no end event, so debounce the transform stream.
-        // Pure pans skip it (scale unchanged). The nudge only ever
-        // fires when truly idle: re-entering panzoom while a pan,
-        // pinch or smooth zoom is still in flight fights it and the
-        // map visibly jumps.
-        let settledScale = pz ? pz.getTransform().scale : 1;
-        let settleTimer = 0;
-        let lastTransformAt = 0;
-        let mapPointerDown = false;
-        const mapViewport = document.getElementById('map-viewport');
-        if (mapViewport) {
-            mapViewport.addEventListener('pointerdown', () => {
-                mapPointerDown = true;
-            });
-            window.addEventListener('pointerup', () => {
-                mapPointerDown = false;
-            });
-            window.addEventListener('pointercancel', () => {
-                mapPointerDown = false;
-            });
+        const mapZoom = window.WallView ? window.WallView.create({
+            viewport: document.getElementById('map-viewport'),
+            content: document.getElementById('map-content'),
+            onTransform: paintMarkers,
+        }) : {getScale: () => 1, centerOn: () => {}};
+        paintMarkers(mapZoom.getScale());
+        function frontMarker(m) {
+            if (window.WallView) window.WallView.bringToFront(m);
         }
-        function sharpenAfterZoom() {
-            if (!pz) return;
-            lastTransformAt = Date.now();
-            clearTimeout(settleTimer);
-            settleTimer = setTimeout(settleNudge, 150);
-        }
-        function settleNudge() {
-            // Still interacting, or transforms still arriving:
-            // wait for real idleness. This retry deliberately
-            // leaves lastTransformAt alone, or the nudge could
-            // defer itself forever.
-            if (mapPointerDown || Date.now() - lastTransformAt < 250) {
-                clearTimeout(settleTimer);
-                settleTimer = setTimeout(settleNudge, 150);
-                return;
-            }
-            const t = pz.getTransform();
-            if (t.scale === settledScale) return;
-            settledScale = t.scale;
-            const q = 1 / (window.devicePixelRatio || 1);
-            let x = Math.round(t.x / q) * q;
-            let y = Math.round(t.y / q) * q;
-            // Already pixel-aligned: nudge a hair so a fresh
-            // transform still commits. Far below visibility.
-            if (x === t.x && y === t.y) x += q / 64;
-            rescaleMarkers();
-            pz.moveTo(x, y);
-        }
-        if (pz) pz.on('transform', sharpenAfterZoom);
 
         const popup = document.getElementById('climb-popup');
         const sheetBody = document.getElementById('sheet-body');
@@ -240,7 +150,7 @@
         function triesWord(n) {
             if (n <= 1) return 'Flash';
             if (n === 2) return '2nd go';
-            if (n >= 5) return '5+';
+            if (n >= 5) return 'tries';
             return n + ' tries';
         }
 
@@ -363,9 +273,9 @@
             const tag = climbTag(data.tag, data.grade);
             sheetBody.innerHTML = `
                 <div class="sheet-head">
-                    <span class="climb-dot" style="background:${esc(data.colour)}"></span>
+                    <span class="climb-dot" style="background:${esc(data.colour_hex || data.colour)}"></span>
                     <div class="sheet-title">
-                        <h3>${esc(data.name) || esc(data.colour) || 'Unnamed climb'} <span class="grade-pill ${tag.cls}">${esc(tag.label)}</span></h3>
+                        <h3>${esc(data.name) || esc(data.colour_name) || esc(data.colour) || 'Unnamed climb'} <span class="grade-pill ${tag.cls}">${esc(tag.label)}</span></h3>
                         <p class="wall-line">${esc(data.wall_display)}</p>
                     </div>
                     <button class="sheet-x" aria-label="Close">×</button>
@@ -409,7 +319,7 @@
 
         function wirePopup(id, initialTries, setGrade) {
             // Stepper state lives in JS — there is no text field to type in.
-            // It tops out at 5+: anything higher scores the same.
+            // Tries run 1–5; the top step means 5+.
             const sendBtn = document.getElementById('p-send-ascent');
             if (sendBtn) {
                 let tries = Math.min(5, Math.max(1, initialTries || 1));
@@ -427,12 +337,17 @@
                 paint();
                 sendBtn.addEventListener('click', async () => {
                     try {
+                        sendBtn.disabled = true;
                         await api('/' + id + '/ascent/', 'POST', {tries});
-                        // Reload so the marker grade turns green
-                        // immediately, everywhere.
-                        location.reload();
+                        // No reload: join the sent set, re-dim the
+                        // markers and re-render the sheet in place.
+                        SENT_IDS.add(parseInt(id, 10));
+                        applyMarkerFilter();
+                        await refreshPopup();
                     } catch (e) {
                         alert(e.message);
+                    } finally {
+                        sendBtn.disabled = false;
                     }
                 });
             }
@@ -440,10 +355,15 @@
             if (undoBtn) {
                 undoBtn.addEventListener('click', async () => {
                     try {
+                        undoBtn.disabled = true;
                         await api('/' + id + '/ascent/', 'DELETE');
-                        location.reload();
+                        SENT_IDS.delete(parseInt(id, 10));
+                        applyMarkerFilter();
+                        await refreshPopup();
                     } catch (e) {
                         alert(e.message);
+                    } finally {
+                        undoBtn.disabled = false;
                     }
                 });
             }
@@ -602,8 +522,8 @@
         // dim the other group instead of hiding it, and the grade
         // search hides every marker outside the picked grade
         // (mystery climbs could be anything, so they always stay).
-        // Both choices stick on this device, so they survive the
-        // reload after logging a send.
+        // Both choices stick on this device. Logging a send
+        // updates the sheet and the markers in place, no reload.
         const SENT_IDS = new Set([{% for id in sent_ids %}{{ id }}{% if not forloop.last %}, {% endif %}{% endfor %}]);
         const FILTER_KEY = 'summit-filter';
         const GRADE_KEY = 'summit-grade';
@@ -656,8 +576,8 @@
         applyMarkerFilter();
 
         // Deep link from the leaderboard stats: ?climb=<id> centers
-        // that marker (via its real on-screen box, so all transforms
-        // and letterboxing are accounted for) and opens its sheet.
+        // that marker (content coordinates need no transform maths)
+        // and opens its sheet.
         (() => {
             const m = /[?&]climb=(\d+)/.exec(location.search);
             if (!m) return;
@@ -668,12 +588,11 @@
                 markerFilter = 'all';
                 applyMarkerFilter();
             }
-            if (pz) {
-                const r = marker.getBoundingClientRect();
-                const vp = document.getElementById('map-viewport').getBoundingClientRect();
-                const t = pz.getTransform();
-                pz.moveTo(t.x + (vp.left + vp.width / 2) - (r.left + r.width / 2),
-                          t.y + (vp.top + vp.height / 2) - (r.top + r.height / 2));
+            const dot = marker.querySelector('.climb-dot');
+            if (dot) {
+                mapZoom.centerOn(
+                    parseFloat(dot.getAttribute('cx')),
+                    parseFloat(dot.getAttribute('cy')));
             }
             currentId = marker.dataset.climbId;
             refreshPopup();
@@ -683,99 +602,62 @@
         // pan/zoom layer can swallow click events after touch gestures,
         // while pointerup reliably fires. Drags (moved far / held long)
         // still pan the map instead of opening the sheet.
-        // Overlapping markers share one tap point: gather every visible
-        // marker within a finger-sized radius of the tap and, when more
-        // than one qualifies, offer a chooser so the right climb is
-        // always reachable on phones and desktops alike.
-        const picker = document.getElementById('marker-picker');
-        const pickerList = document.getElementById('picker-list');
-        const pickerTitle = document.getElementById('picker-title');
-        const PICK_RADIUS = 30;
-        function markerCenter(m) {
-            const dot = m.querySelector('.climb-dot') || m;
-            const r = dot.getBoundingClientRect();
-            return {x: r.left + r.width / 2, y: r.top + r.height / 2};
-        }
-        function visibleMarkers() {
-            return [...document.querySelectorAll('.climb-marker')].filter(
-                m => m.style.display !== 'none');
-        }
-        function nearbyMarkers(x, y) {
-            return visibleMarkers()
-                .map(m => {
-                    const c = markerCenter(m);
-                    return {m, d: Math.hypot(c.x - x, c.y - y)};
-                })
-                .filter(o => o.d <= PICK_RADIUS)
-                .sort((a, b) => a.d - b.d)
-                .map(o => o.m);
-        }
-        function hidePicker() {
-            if (!picker) return;
-            picker.setAttribute('hidden', '');
-            pickerList.innerHTML = '';
-        }
+        // Which climb opens is decided by geometry at the RELEASE
+        // point: the tap must land inside a marker's VISIBLE dot (via
+        // its real on-screen box, so zoom and pan are accounted for).
+        // Each marker's collider is exactly its dot — no invisible
+        // halo. Dots that overlap resolve to whichever sits on top
+        // (later paint order wins); a tap inside no dot opens
+        // nothing. The dot keeps a constant on-screen size at any
+        // zoom, and the hovered/pressed marker comes to the front so
+        // overlaps look predictable too.
         async function openClimb(id) {
             currentId = id;
             await refreshPopup();
         }
-        function showPicker(candidates, x, y) {
-            pickerList.innerHTML = '';
-            pickerTitle.textContent = candidates.length + ' climbs here — pick one';
-            candidates.forEach(m => {
-                const li = document.createElement('li');
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'pick';
-                const label = m.dataset.name || m.dataset.colour || ('#' + m.dataset.climbId);
-                const grade = m.dataset.grade || '?';
-                const colour = m.dataset.colour || '#888';
-                btn.innerHTML = '<span class="pick-dot"></span><span class="pick-label"></span>' +
-                    '<span class="pick-grade">' + esc(grade) + '</span>';
-                btn.querySelector('.pick-dot').style.background = colour;
-                btn.querySelector('.pick-label').textContent = label;
-                btn.addEventListener('click', async () => {
-                    hidePicker();
-                    await openClimb(m.dataset.climbId);
-                });
-                li.appendChild(btn);
-                pickerList.appendChild(li);
-            });
-            picker.removeAttribute('hidden');
-            const w = picker.offsetWidth || 240;
-            const h = picker.offsetHeight || 160;
-            picker.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x + 12)) + 'px';
-            picker.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, y + 12)) + 'px';
-            const first = pickerList.querySelector('button');
-            if (first) first.focus({preventScroll: true});
+        function dotDistance(marker, x, y) {
+            const dot = marker.querySelector('.climb-dot');
+            if (!dot) return null;
+            const r = dot.getBoundingClientRect();
+            if (!r.width && !r.height) return null;
+            const cx = r.left + r.width / 2;
+            const cy = r.top + r.height / 2;
+            const rad = Math.max(r.width, r.height) / 2;
+            const d = Math.hypot(x - cx, y - cy);
+            return {d, inside: d <= rad};
         }
-        document.getElementById('picker-close').addEventListener('click', hidePicker);
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && picker && !picker.hasAttribute('hidden')) hidePicker();
-        });
-        document.getElementById('map-viewport').addEventListener('pointerdown', hidePicker);
-        if (pz) pz.on('transform', hidePicker);
+        function climbAt(x, y) {
+            // Later siblings paint above earlier ones, so the last
+            // dot containing the point is the topmost one.
+            let best = null;
+            document.querySelectorAll('.climb-marker').forEach(m => {
+                if (m.style.display === 'none') return;
+                const hit = dotDistance(m, x, y);
+                if (!hit || !hit.inside) return;
+                best = m;
+            });
+            return best;
+        }
+        let tapDown = null;
         document.querySelectorAll('.climb-marker').forEach(marker => {
-            let down = null;
             marker.addEventListener('pointerdown', (e) => {
-                down = {x: e.clientX, y: e.clientY, t: Date.now()};
+                tapDown = {x: e.clientX, y: e.clientY, t: Date.now()};
+                frontMarker(marker);
+            });
+            marker.addEventListener('pointerenter', () => {
+                frontMarker(marker);
             });
             marker.addEventListener('pointerup', async (e) => {
-                if (!down) return;
-                const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
-                const held = Date.now() - down.t;
-                down = null;
+                if (!tapDown) return;
+                const moved = Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y);
+                const held = Date.now() - tapDown.t;
+                tapDown = null;
                 if (moved > 12 || held > 600) return;
-                let candidates = nearbyMarkers(e.clientX, e.clientY);
-                if (!candidates.includes(marker)) candidates = [marker, ...candidates];
-                if (candidates.length > 1) {
-                    showPicker(candidates, e.clientX, e.clientY);
-                    return;
-                }
-                await openClimb(marker.dataset.climbId);
+                const target = climbAt(e.clientX, e.clientY);
+                if (target) await openClimb(target.dataset.climbId);
             });
             marker.addEventListener('pointercancel', () => {
-                down = null;
+                tapDown = null;
             });
         });
     </script>

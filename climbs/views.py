@@ -25,14 +25,15 @@ from .models import (
     TAG_VALUES,
     WALL_CHOICES,
     TAGS_BY_GRADE,
+    clamp_to_wall,
     grade_number,
     grades_for_tag,
     tag_supports_grade,
 )
 from .scoring import MYSTERY_FIXED_POINTS
 
-MAP_WIDTH = 256    # update to match your tightened viewBox width
-MAP_HEIGHT = 512   # update to match your tightened viewBox height
+MAP_WIDTH = 256    # overlay viewBox width (see models.WALL_MAP_WIDTH)
+MAP_HEIGHT = 512   # overlay viewBox height (see models.WALL_MAP_HEIGHT)
 
 GRADE_VALUES = [g for g, _ in Climb.GRADE_CHOICES]
 WALL_VALUES = [w for w, _ in WALL_CHOICES]
@@ -107,14 +108,31 @@ def map_view(request):
 
 
 def _leaderboard_rows(climb_set):
+    """Public board: voided ascents score nothing and hidden users sit
+    out while under review."""
     if climb_set is None:
         return []
     return list(
-        Ascent.objects.filter(climb__climb_set=climb_set)
+        Ascent.objects.filter(
+            climb__climb_set=climb_set, is_voided=False,
+            user__leaderboard_hidden=False)
         .values("user__username", "user__avatar")
         .annotate(total_points=Sum("points"), climb_count=Count("climb", distinct=True))
         .order_by("-total_points")
     )
+
+
+def _audit_ascent(user, ascent, climb, actor, action,
+                  old_tries=None, new_tries=None,
+                  old_grade="", new_grade="",
+                  old_points=None, new_points=None, note=""):
+    """One row in the ascent audit ledger (server timestamps only)."""
+    from .models import AscentAudit
+    return AscentAudit.objects.create(
+        user=user, ascent=ascent, climb=climb, actor=actor, action=action,
+        old_tries=old_tries, new_tries=new_tries,
+        old_grade=old_grade, new_grade=new_grade,
+        old_points=old_points, new_points=new_points, note=note)
 
 
 def _deal_positions(rows, key="total_points"):
@@ -359,6 +377,8 @@ def climb_detail_api(request, climb_id):
         "is_mystery": climb.is_mystery,
         "mystery_points": MYSTERY_FIXED_POINTS,
         "colour": climb.colour,
+        "colour_name": climb.colour_name,
+        "colour_hex": climb.colour_hex,
         "wall": climb.wall,
         "wall_display": climb.get_wall_display(),
         "climb_set": climb.climb_set.label if climb.climb_set else None,
@@ -367,7 +387,8 @@ def climb_detail_api(request, climb_id):
         "rating_count": stats["count"],
         "ascent_count": climb.ascents.count(),
         "recent_ascents": [
-            {"user": a.user.username, "tries": a.tries, "points": a.points}
+            {"user": a.user.username, "tries": a.tries, "points": a.points,
+             "voided": a.is_voided}
             for a in climb.ascents.select_related("user").order_by("-id")
         ],
         "grade_votes": _grade_vote_counts(climb),
@@ -380,12 +401,15 @@ def climber_api(request, username):
     """Mini public profile for tapping a name on a board or comment:
     picture, totals, hardest grade and current ranks."""
     user = get_object_or_404(get_user_model(), username=username)
-    totals = user.ascents.aggregate(sends=Count("id"), points=Sum("points"))
+    totals = user.ascents.filter(is_voided=False).aggregate(
+        sends=Count("id"), points=Sum("points"))
     best = None
     # Mystery climbs stay out: their hidden grade must not leak
-    # through a climber's "best" line before the reveal.
+    # through a climber's "best" line before the reveal. Voided
+    # ascents score nothing, so they never count as a best either.
     for grade in user.ascents.exclude(
-            climb__tag="mystery").values_list("climb__grade", flat=True):
+            climb__tag="mystery").filter(
+            is_voided=False).values_list("climb__grade", flat=True):
         number = grade_number(grade)
         if number is not None and (best is None or number > best):
             best = number
@@ -438,28 +462,45 @@ def ascent_api(request, climb_id):
             user=request.user, climb=climb).first()
         if ascent is None:
             return JsonResponse({"error": "No send logged."}, status=404)
+        _audit_ascent(request.user, None, climb, request.user, "delete",
+                      old_tries=ascent.tries, old_grade=climb.grade,
+                      old_points=ascent.points)
         ascent.delete()
+        from .anticheat import refresh_user_flags
+        refresh_user_flags(request.user)
         return JsonResponse({"status": "deleted"})
     try:
         tries = int(json.loads(request.body).get("tries", 0))
     except (ValueError, TypeError, json.JSONDecodeError):
         return JsonResponse({"error": "Tries must be a number."}, status=400)
-    if tries < 1:
-        return JsonResponse({"error": "Tries must be at least 1."}, status=400)
+    if tries < 1 or tries > 5:
+        return JsonResponse(
+            {"error": "Tries must be between 1 and 5."}, status=400)
     if Ascent.objects.filter(user=request.user, climb=climb).exists():
         return JsonResponse(
             {"error": "Already logged — undo it first to change it."},
             status=400)
-    # The top bucket is 5+: anything higher is stored and scored as 5.
-    # The exists() check above races a double-tap: the unique
-    # (user, climb) constraint is the backstop, reported the same way.
+    # Basic prevention: per-user rate limit on logging.
+    from .anticheat import rate_limited, refresh_user_flags
+    if rate_limited(request.user):
+        return JsonResponse(
+            {"error": "Too many sends logged lately — try again later."},
+            status=429)
+    # The actual try count is stored (scoring floors at 5+, so 6 and
+    # 40 score the same). The exists() check above races a double-tap:
+    # the unique (user, climb) constraint is the backstop, reported
+    # the same way.
     try:
         ascent = Ascent.objects.create(
-            user=request.user, climb=climb, tries=min(tries, 5))
+            user=request.user, climb=climb, tries=tries)
     except IntegrityError:
         return JsonResponse(
             {"error": "Already logged — undo it first to change it."},
             status=400)
+    _audit_ascent(request.user, ascent, climb, request.user, "create",
+                  new_tries=ascent.tries, new_grade=climb.grade,
+                  new_points=ascent.points)
+    refresh_user_flags(request.user)
     return JsonResponse({"tries": ascent.tries, "points": ascent.points})
 
 
@@ -578,6 +619,15 @@ def _admin_selection(request):
 
 @user_passes_test(staff_check)
 def climb_admin_view(request):
+    from .models import TAPE_COLOURS, TAPE_FAMILIES
+    tape_colours_json = json.dumps(dict(TAPE_COLOURS))
+    by_name = dict(TAPE_COLOURS)
+    tape_swatches_json = json.dumps([
+        {"family": family,
+         "swatches": [{"name": name, "hex": by_name[name]}
+                      for name in names]}
+        for family, names in TAPE_FAMILIES
+    ])
     wall, sets, active, selected = _admin_selection(request)
     climbs = (Climb.objects.filter(climb_set=selected).order_by("id")
               if selected is not None else [])
@@ -598,19 +648,85 @@ def climb_admin_view(request):
         "grade_choices": GRADE_VALUES,
         "tag_choices": TAG_CHOICES,
         "wall_choices": WALL_CHOICES,
+        "tape_colours": TAPE_COLOURS,
+        "tape_colours_json": tape_colours_json,
+        "tape_swatches_json": tape_swatches_json,
     })
 
 
 @user_passes_test(staff_check)
 def board_admin_view(request):
+    """Staff board with anti-cheat review: a Flags column per user
+    (suspicion badge + expandable rule evidence), moderation actions,
+    and flagged / suspicion / status filters. The wall tab scopes by
+    wall; the set picker scopes by set."""
+    from .anticheat import suspicion_score
+    from .models import Flag
     wall, sets, active, selected = _admin_selection(request)
     board = []
     if selected is not None:
-        board = list(
-            Ascent.objects.filter(climb__climb_set=selected)
+        rows = list(
+            Ascent.objects.filter(
+                climb__climb_set=selected, is_voided=False)
             .values("user__username")
             .annotate(sends=Count("id"), points=Sum("points"))
             .order_by("-points"))
+        usernames = [r["user__username"] for r in rows]
+        User = get_user_model()
+        users = {u.username: u
+                 for u in User.objects.filter(username__in=usernames)}
+        all_flags = list(Flag.objects.filter(
+            user__username__in=usernames).select_related("ascent")
+            .order_by("-created_at"))
+        by_user = {}
+        for flag in all_flags:
+            by_user.setdefault(flag.user_id, []).append(flag)
+        by_name = {}
+        for username, user in users.items():
+            by_name[username] = by_user.get(user.id, [])
+        for row in rows:
+            user = users.get(row["user__username"])
+            flags = by_name.get(row["user__username"], [])
+            row["hidden"] = user.leaderboard_hidden if user else False
+            row["suspicion"] = suspicion_score(user) if user else 0
+            row["open_flags"] = [f for f in flags if f.status == "open"]
+            row["flags"] = flags
+        flagged_only = request.GET.get("flagged") == "1"
+        try:
+            suspicion_min = int(request.GET.get("suspicion", "") or 0)
+        except ValueError:
+            suspicion_min = 0
+        if suspicion_min < 0:
+            suspicion_min = 0
+        status = request.GET.get("status", "")
+        if flagged_only:
+            rows = [r for r in rows if r["open_flags"]]
+        if status in ("open", "reviewed", "dismissed", "confirmed"):
+            rows = [r for r in rows if any(
+                f.status == status for f in r["flags"])]
+        for row in rows:
+            # The status filter narrows the rows AND the flags listed
+            # inside them: filtering status=open must not keep showing
+            # the row's closed flags. If the status filter leaves a
+            # displayed row with nothing shown, fall back to all its
+            # flags rather than hiding evidence.
+            shown = [
+                f for f in row["flags"]
+                if status not in ("open", "reviewed", "dismissed",
+                                  "confirmed") or f.status == status
+            ]
+            if not shown:
+                shown = list(row["flags"])
+            row["shown_flags"] = shown
+            row["shown_open"] = [f for f in shown if f.status == "open"]
+            row["shown_suspicion"] = min(
+                sum(f.points for f in row["shown_open"]), 100)
+        if suspicion_min:
+            rows = [r for r in rows
+                    if r["shown_suspicion"] >= suspicion_min]
+        board = rows
+    total_sends = sum(r["sends"] for r in board)
+    open_flag_count = sum(len(r["shown_open"]) for r in board)
     return render(request, "climbs/board_admin.html", {
         "admin_tab": "boards",
         "walls": [{"wall": w, "display": d} for w, d in WALL_CHOICES],
@@ -619,7 +735,270 @@ def board_admin_view(request):
         "active": active,
         "selected": selected,
         "board": board,
+        "total_sends": total_sends,
+        "open_flag_count": open_flag_count,
+        "flagged_only": request.GET.get("flagged") == "1",
+        "suspicion_filter": request.GET.get("suspicion", ""),
+        "status_filter": request.GET.get("status", ""),
     })
+
+
+def _staff_or_404(request):
+    """Staff/superuser only, 404 for everyone else: flag review must
+    never be visible — or inferable — to normal users."""
+    if not (request.user.is_authenticated and request.user.is_staff):
+        from django.http import Http404
+        raise Http404()
+    return True
+
+
+def _moderation_log(actor, action, username="", details=None, note=""):
+    from .models import ModerationLog
+    return ModerationLog.objects.create(
+        actor=actor, action=action, username=username,
+        details=details or {}, note=note or "")
+
+
+@require_http_methods(["POST"])
+def flag_review_api(request, flag_id):
+    """Review one flag: dismiss / mark reviewed / confirm. Dismissing
+    or confirming requires a note; marking reviewed offers one. The
+    action is logged. Non-punitive wording throughout."""
+    from .models import Flag
+    _staff_or_404(request)
+    flag = get_object_or_404(Flag, id=flag_id)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({"error": "Invalid data."}, status=400)
+    status = (data.get("status") or "").strip()
+    if status not in ("reviewed", "dismissed", "confirmed"):
+        return JsonResponse({"error": "Unknown status."}, status=400)
+    note = (data.get("note") or "").strip()
+    if status in ("dismissed", "confirmed") and not note:
+        return JsonResponse(
+            {"error": "A note is required to dismiss or confirm."},
+            status=400)
+    flag.status = status
+    flag.note = note
+    flag.reviewed_by = request.user
+    flag.save(update_fields=["status", "note", "reviewed_by"])
+    _moderation_log(request.user, f"flag_{status}",
+                    username=flag.user.username,
+                    details={"flag_id": flag.id,
+                             "rule": flag.rule_code},
+                    note=note)
+    return JsonResponse({"status": "ok"})
+
+
+@require_http_methods(["POST"])
+def flags_review_many_api(request):
+    """Mark several flags reviewed in one action (one optional note
+    for the lot). Bulk is reviewed-only: dismissing or confirming
+    stays per-flag, where the required note belongs to one finding.
+    Only open flags move; anything already closed is skipped and
+    reported. Every change is logged per flag, like the single API.
+    """
+    from .models import Flag
+    _staff_or_404(request)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({"error": "Invalid data."}, status=400)
+    ids = data.get("ids") or []
+    if (not isinstance(ids, list) or not ids
+            or len(ids) > 200
+            or any(not isinstance(i, int) for i in ids)):
+        return JsonResponse({"error": "Provide 1-200 flag ids."},
+                            status=400)
+    note = (data.get("note") or "").strip()
+    flags = list(Flag.objects.filter(id__in=ids).select_related("user"))
+    reviewed, skipped = 0, 0
+    for flag in flags:
+        if flag.status != "open":
+            skipped += 1
+            continue
+        flag.status = "reviewed"
+        flag.note = note
+        flag.reviewed_by = request.user
+        flag.save(update_fields=["status", "note", "reviewed_by"])
+        _moderation_log(request.user, "flag_reviewed",
+                        username=flag.user.username,
+                        details={"flag_id": flag.id,
+                                 "rule": flag.rule_code,
+                                 "bulk": True},
+                        note=note)
+        reviewed += 1
+    return JsonResponse({"status": "ok", "reviewed": reviewed,
+                         "skipped": skipped})
+
+
+@require_http_methods(["POST"])
+def ascent_void_api(request, ascent_id):
+    """Void (or restore) one ascent: voided ascents stay in logs but
+    score nothing and leave every leaderboard. Reason required to
+    void; restoring offers a note. Logged + audited."""
+    from .anticheat import refresh_user_flags
+    _staff_or_404(request)
+    ascent = get_object_or_404(
+        Ascent.objects.select_related("climb", "user"), id=ascent_id)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({"error": "Invalid data."}, status=400)
+    void = data.get("void", True)
+    void = void not in (False, "false", "0", 0, "no")
+    note = (data.get("reason") or data.get("note") or "").strip()
+    if void and not note:
+        return JsonResponse(
+            {"error": "A reason is required to void a send."}, status=400)
+    ascent.is_voided = void
+    ascent.void_reason = note if void else ""
+    ascent.save(update_fields=["is_voided", "void_reason"])
+    _audit_ascent(ascent.user, ascent, ascent.climb, request.user,
+                  "void" if void else "unvoid",
+                  old_tries=ascent.tries, new_tries=ascent.tries,
+                  old_grade=ascent.climb.grade,
+                  new_grade=ascent.climb.grade,
+                  old_points=None if void else 0,
+                  new_points=0 if void else ascent.points,
+                  note=note)
+    _moderation_log(request.user, "void" if void else "unvoid",
+                    username=ascent.user.username,
+                    details={"ascent_id": ascent.id,
+                             "climb_id": ascent.climb_id},
+                    note=note)
+    refresh_user_flags(ascent.user)
+    return JsonResponse({"status": "ok", "voided": ascent.is_voided})
+
+
+def user_log_view(request, username):
+    """Admin-only full climb log for one user, newest first. Columns:
+    date/time (stored UTC, shown Europe/London), climb name/id, wall,
+    colour swatch + name, official grade, tries, points, voided
+    status, flags tied to the ascent. Filters: wall, date range,
+    flagged, voided. Totals on top, audit history below, CSV export.
+    Staff only (404 otherwise)."""
+    from zoneinfo import ZoneInfo
+
+    from django.http import HttpResponse
+
+    from .anticheat import suspicion_score
+    from .models import AscentAudit
+    _staff_or_404(request)
+    user = get_object_or_404(get_user_model(), username=username)
+    ascents = (user.ascents.select_related("climb")
+               .prefetch_related("flags").order_by("-logged_at", "-id"))
+    wall = request.GET.get("wall", "all")
+    if wall in [w for w, _ in WALL_CHOICES]:
+        ascents = ascents.filter(climb__wall=wall)
+    else:
+        wall = "all"
+    date_from = (request.GET.get("from") or "").strip()
+    date_to = (request.GET.get("to") or "").strip()
+    from datetime import datetime
+    if date_from:
+        try:
+            ascents = ascents.filter(
+                logged_at__date__gte=datetime.strptime(
+                    date_from, "%Y-%m-%d").date())
+        except ValueError:
+            date_from = ""
+    if date_to:
+        try:
+            ascents = ascents.filter(
+                logged_at__date__lte=datetime.strptime(
+                    date_to, "%Y-%m-%d").date())
+        except ValueError:
+            date_to = ""
+    flagged = request.GET.get("flagged", "all")
+    if flagged == "flagged":
+        ascents = ascents.filter(flags__isnull=False).distinct()
+    elif flagged == "unflagged":
+        ascents = ascents.filter(flags__isnull=True)
+    else:
+        flagged = "all"
+    voided = request.GET.get("voided", "all")
+    if voided == "voided":
+        ascents = ascents.filter(is_voided=True)
+    elif voided == "active":
+        ascents = ascents.filter(is_voided=False)
+    else:
+        voided = "all"
+    ascents = list(ascents)
+    london = ZoneInfo("Europe/London")
+    for ascent in ascents:
+        ascent.local_time = ascent.logged_at.astimezone(london)
+    live = [a for a in ascents if not a.is_voided]
+    totals = {
+        "sends": len(live),
+        "points": sum(a.points or 0 for a in live),
+        "flashes": sum(1 for a in live if a.tries == 1),
+        "voided": sum(1 for a in ascents if a.is_voided),
+        "suspicion": suspicion_score(user),
+    }
+    audits = list(AscentAudit.objects.filter(user=user)
+                  .select_related("climb")[:100])
+    for audit in audits:
+        audit.local_time = audit.created_at.astimezone(london)
+    if request.GET.get("format") == "csv":
+        import csv
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = (
+            f'attachment; filename="climb-log-{user.username}.csv"')
+        writer = csv.writer(response)
+        writer.writerow(["logged_at", "climb_id", "climb_name", "wall",
+                         "colour", "grade", "tries", "points", "voided",
+                         "void_reason", "flags"])
+        for ascent in ascents:
+            writer.writerow([
+                ascent.local_time.strftime("%Y-%m-%d %H:%M"),
+                ascent.climb_id,
+                ascent.climb.name or ascent.climb.colour_name,
+                ascent.climb.get_wall_display(),
+                ascent.climb.colour_name,
+                ascent.climb.grade,
+                ascent.tries,
+                ascent.points,
+                "yes" if ascent.is_voided else "no",
+                ascent.void_reason,
+                "; ".join(
+                    f"{f.rule_code} ({f.severity}/{f.status})"
+                    for f in ascent.flags.all()),
+            ])
+        return response
+    return render(request, "climbs/user_log.html", {
+        "log_user": user,
+        "ascents": ascents,
+        "totals": totals,
+        "audits": audits,
+        "wall": wall,
+        "wall_choices": [("all", "All walls")] + list(WALL_CHOICES),
+        "date_from": date_from,
+        "date_to": date_to,
+        "flagged": flagged,
+        "voided": voided,
+    })
+
+
+@require_http_methods(["POST"])
+def user_hide_api(request, username):
+    """Hide a user from public leaderboards while under review (or
+    restore them). Note optional; every action is logged."""
+    _staff_or_404(request)
+    user = get_object_or_404(get_user_model(), username=username)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({"error": "Invalid data."}, status=400)
+    hidden = data.get("hidden", True)
+    hidden = hidden not in (False, "false", "0", 0, "no")
+    note = (data.get("note") or "").strip()
+    user.leaderboard_hidden = hidden
+    user.save(update_fields=["leaderboard_hidden"])
+    _moderation_log(request.user, "hide" if hidden else "unhide",
+                    username=user.username, note=note)
+    return JsonResponse({"status": "ok", "hidden": user.leaderboard_hidden})
 
 
 def _activate_set(climb_set):
@@ -689,12 +1068,24 @@ def set_remove_user_api(request, set_id):
         return JsonResponse({"error": "Invalid data."}, status=400)
     username = (data.get("username") or "").strip()
     user = get_object_or_404(get_user_model(), username=username)
+    doomed = list(Ascent.objects.filter(
+        climb__climb_set=climb_set, user=user).select_related("climb"))
     try:
         removed, _ = Ascent.objects.filter(
             climb__climb_set=climb_set, user=user).delete()
     except Exception:
         return JsonResponse(
             {"error": "Could not remove that climber."}, status=400)
+    for ascent in doomed:
+        _audit_ascent(user, None, ascent.climb, request.user, "delete",
+                      old_tries=ascent.tries,
+                      old_grade=ascent.climb.grade,
+                      old_points=ascent.points,
+                      note=f"Removed from set {climb_set.label}")
+    _moderation_log(request.user, "remove_from_set", username=username,
+                    details={"set_id": climb_set.id, "removed": removed})
+    from .anticheat import refresh_user_flags
+    refresh_user_flags(user)
     return JsonResponse({"status": "ok", "removed": removed})
 
 
@@ -732,6 +1123,9 @@ def climb_create_api(request):
         y = float(data["y_percent"])
     except (KeyError, TypeError, ValueError):
         return JsonResponse({"error": "x_percent/y_percent required."}, status=400)
+    # Markers live inside the wall bounds (minus the marker radius):
+    # anything outside is clamped back in, never stored out of view.
+    x, y = clamp_to_wall(x, y)
     climb = Climb.objects.create(
         name=data.get("name", ""),
         grade=grade,
@@ -772,8 +1166,16 @@ def climb_update_api(request, climb_id):
             except (TypeError, ValueError):
                 return JsonResponse(
                     {"error": f"{field} must be a number."}, status=400)
-    for field in ("name", "grade", "tag", "colour", "wall", "x_percent",
-                  "y_percent", "is_active"):
+    if "x_percent" in data or "y_percent" in data:
+        # A drag past the photo edge clamps back inside (minus the
+        # marker radius) instead of stranding the marker off-map.
+        data["x_percent"], data["y_percent"] = clamp_to_wall(
+            data.get("x_percent", climb.x_percent),
+            data.get("y_percent", climb.y_percent))
+        climb.x_percent = data["x_percent"]
+        climb.y_percent = data["y_percent"]
+    for field in ("name", "grade", "tag", "colour", "wall",
+                  "is_active"):
         if field in data:
             setattr(climb, field, data[field])
     if "wall" in data:

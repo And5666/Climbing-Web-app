@@ -32,27 +32,137 @@
         {% endif %}
     </aside>
     <div class="admin-main">
-        <section class="card">
-            <h3>Leaderboard · {% if selected %}{{ selected.label }}{% else %}—{% endif %}</h3>
+        <section class="card review-card">
+            <div class="review-head">
+                <h3>Leaderboard · {% if selected %}{{ selected.label }}{% else %}—{% endif %}</h3>
+                {% if selected %}
+                    <p class="review-meta">
+                        <span>{{ selected.created_at|date:"j M Y" }}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{{ board|length }} climber{{ board|length|pluralize }}</span>
+                        <span aria-hidden="true">·</span>
+                        <span>{{ total_sends }} send{{ total_sends|pluralize }}</span>
+                        <span aria-hidden="true">·</span>
+                        <span{% if open_flag_count %} class="review-attn"{% endif %}>{{ open_flag_count }} need review</span>
+                    </p>
+                {% endif %}
+            </div>
+            <form method="get" action="{% url 'climbs:board-admin' %}" class="flag-filters">
+                <input type="hidden" name="wall" value="{{ wall }}">
+                {% if selected %}<input type="hidden" name="set" value="{{ selected.id }}">{% endif %}
+                <label class="filter-check"><input type="checkbox" name="flagged" value="1"{% if flagged_only %} checked{% endif %}> Needs review only</label>
+                <label class="filter-field">Suspicion
+                    <select name="suspicion">
+                        <option value="">Any</option>
+                        <option value="20"{% if suspicion_filter == "20" %} selected{% endif %}>20+</option>
+                        <option value="50"{% if suspicion_filter == "50" %} selected{% endif %}>50+</option>
+                        <option value="75"{% if suspicion_filter == "75" %} selected{% endif %}>75+</option>
+                    </select>
+                </label>
+                <label class="filter-field">Status
+                    <select name="status">
+                        <option value="">Any</option>
+                        <option value="open"{% if status_filter == "open" %} selected{% endif %}>Open</option>
+                        <option value="reviewed"{% if status_filter == "reviewed" %} selected{% endif %}>Reviewed</option>
+                        <option value="dismissed"{% if status_filter == "dismissed" %} selected{% endif %}>Dismissed</option>
+                        <option value="confirmed"{% if status_filter == "confirmed" %} selected{% endif %}>Confirmed</option>
+                    </select>
+                </label>
+                <button class="btn btn-sm btn-secondary" type="submit">Filter</button>
+                {% if flagged_only or suspicion_filter or status_filter %}
+                    <a class="btn btn-sm btn-secondary" href="{% url 'climbs:board-admin' %}?wall={{ wall }}{% if selected %}&set={{ selected.id }}{% endif %}">Clear</a>
+                {% endif %}
+            </form>
             {% if board %}
-                <table>
+                <div class="table-wrap">
+                <table class="review-table">
                     <thead>
-                        <tr><th>Climber</th><th>Sends</th><th>Points</th><th></th></tr>
+                        <tr><th class="rank">#</th><th>Climber</th><th class="num">Sends</th><th class="num">Points</th><th>Flags</th><th>Actions</th></tr>
                     </thead>
                     <tbody>
                         {% for row in board %}
-                            <tr>
-                                <td>{{ row.user__username }}</td>
-                                <td>{{ row.sends }}</td>
-                                <td>{{ row.points }}</td>
-                                <td><button class="btn btn-sm btn-secondary" data-remove-user="{{ row.user__username }}" type="button">Remove</button></td>
+                            <tr{% if row.shown_open %} class="has-flags"{% endif %}>
+                                <td class="rank">{{ forloop.counter }}</td>
+                                <td><a href="{% url 'climbs:user-log' row.user__username %}">{{ row.user__username }}</a>{% if row.hidden %} <span class="pill pill-muted">hidden from board</span>{% endif %}</td>
+                                <td class="num">{{ row.sends }}</td>
+                                <td class="num">{{ row.points }}</td>
+                                <td>
+                                    {% if row.shown_open %}
+                                        <span class="suspicion-badge {% if row.shown_suspicion >= 50 %}sev-high{% elif row.shown_suspicion >= 20 %}sev-med{% else %}sev-low{% endif %}" title="Suspicion {{ row.shown_suspicion }}: adds up the points on this climber's {{ row.shown_open|length }} open flag(s), capped at 100">⚑ {{ row.shown_suspicion }}</span>
+                                        <details class="flag-list">
+                                            <summary>Needs review ({{ row.shown_open|length }})</summary>
+                                            <button class="btn btn-sm btn-secondary" data-review-all="{% for flag in row.shown_open %}{{ flag.id }}{% if not forloop.last %},{% endif %}{% endfor %}" type="button">Mark all reviewed</button>
+                                            <ul>
+                                                {% for flag in row.shown_open %}
+                                                    <li class="flag-item" data-flag="{{ flag.id }}">
+                                                        <div class="flag-top">
+                                                            <strong>{{ flag.rule_code }}</strong>
+                                                            <span class="pill sev-{{ flag.severity }}">{{ flag.severity }}</span>
+                                                            <span class="pill flag-pts">+{{ flag.points }} pts</span>
+                                                            <span class="muted">{{ flag.created_at|date:"d/m/Y H:i" }}</span>
+                                                        </div>
+                                                        <p>{{ flag.details.summary }}</p>
+                                                        {% if flag.note %}<p class="flag-note">Note: {{ flag.note }}</p>{% endif %}
+                                                        <div class="flag-actions">
+                                                            <button class="btn btn-sm btn-secondary" data-flag-review="{{ flag.id }}" type="button">Mark reviewed</button>
+                                                            <button class="btn btn-sm btn-secondary" data-flag-dismiss="{{ flag.id }}" type="button">Dismiss</button>
+                                                            <button class="btn btn-sm btn-secondary" data-flag-confirm="{{ flag.id }}" type="button">Confirm</button>
+                                                        </div>
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </details>
+                                    {% elif row.shown_flags %}
+                                        <details class="flag-list">
+                                            <summary>Reviewed ({{ row.shown_flags|length }})</summary>
+                                            <ul>
+                                                {% for flag in row.shown_flags %}
+                                                    <li class="flag-item is-closed">
+                                                        <div class="flag-top">
+                                                            <strong>{{ flag.rule_code }}</strong>
+                                                            <span class="pill sev-{{ flag.severity }}">{{ flag.severity }}</span>
+                                                            <span class="pill st-{{ flag.status }}">{{ flag.status }}</span>
+                                                            <span class="pill flag-pts">+{{ flag.points }} pts</span>
+                                                            <span class="muted">{{ flag.created_at|date:"d/m/Y H:i" }}</span>
+                                                        </div>
+                                                        <p>{{ flag.details.summary }}</p>
+                                                        {% if flag.note %}<p class="flag-note">Note: {{ flag.note }}</p>{% endif %}
+                                                    </li>
+                                                {% endfor %}
+                                            </ul>
+                                        </details>
+                                    {% else %}
+                                        <span class="muted">—</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="flag-actions">
+                                        <button class="btn btn-sm btn-danger" data-remove-user="{{ row.user__username }}" type="button">Remove</button>
+                                        {% if row.hidden %}
+                                            <button class="btn btn-sm btn-secondary" data-hide-user="{{ row.user__username }}" data-hidden="0" type="button">Restore to board</button>
+                                        {% else %}
+                                            <button class="btn btn-sm btn-secondary" data-hide-user="{{ row.user__username }}" data-hidden="1" type="button">Hide from board</button>
+                                        {% endif %}
+                                    </div>
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-                <p class="muted">Removing pulls every send of theirs off this set's board. Ratings, grade votes and comments stay.</p>
+                </div>
+                <p class="muted review-legend">⚑ is suspicion: the points on a climber's open flags added up, capped at 100. Each flag carries its own points (+N pts) — severity is the rule's judgement, points are its weight. Suspicion filters whole rows; status narrows the flags listed too.</p>
+                <p class="muted review-note">Removing pulls every send of theirs off this set's board. Ratings, grade votes and comments stay. Flags never auto-punish — everything here needs your review.</p>
             {% else %}
-                <p class="muted">No sends on this set yet.</p>
+                {% if flagged_only or suspicion_filter or status_filter %}
+                    <div class="review-empty">
+                        <p>No rows match these filters.</p>
+                        <a class="btn btn-sm btn-secondary" href="{% url 'climbs:board-admin' %}?wall={{ wall }}{% if selected %}&set={{ selected.id }}{% endif %}">Clear filters</a>
+                    </div>
+                {% else %}
+                    <div class="review-empty">
+                        <p>No sends on this set yet.</p>
+                    </div>
+                {% endif %}
             {% endif %}
         </section>
     </div>
@@ -89,6 +199,82 @@ document.querySelectorAll('[data-remove-user]').forEach(btn => {
             location.reload();
         } catch (err) {
             alert(err.message);
+        }
+    });
+});
+
+async function reviewFlag(id, status, needNote) {
+    let note = '';
+    if (needNote) {
+        note = prompt(status === 'dismissed'
+            ? 'Why is this flag dismissed? (required, logged)'
+            : 'Review note (required, logged):', '');
+        if (note === null) return;
+        note = note.trim();
+        if (!note) {
+            alert('A note is required.');
+            return;
+        }
+    } else {
+        note = prompt('Review note (optional, logged):', '') || '';
+    }
+    try {
+        await api(`/admin-tools/flags/${id}/review/`, 'POST', {status, note});
+        location.reload();
+    } catch (err) {
+        alert(err.message);
+    }
+}
+
+document.querySelectorAll('[data-flag-review]').forEach(btn => {
+    btn.addEventListener('click', () => reviewFlag(btn.dataset.flagReview, 'reviewed', false));
+});
+document.querySelectorAll('[data-flag-dismiss]').forEach(btn => {
+    btn.addEventListener('click', () => reviewFlag(btn.dataset.flagDismiss, 'dismissed', true));
+});
+document.querySelectorAll('[data-flag-confirm]').forEach(btn => {
+    btn.addEventListener('click', () => reviewFlag(btn.dataset.flagConfirm, 'confirmed', true));
+});
+
+document.querySelectorAll('[data-hide-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const username = btn.dataset.hideUser;
+        const hidden = btn.dataset.hidden === '1';
+        const note = prompt(hidden
+            ? `Hide ${username} from public boards while reviewing? (optional note, logged)`
+            : `Restore ${username} to public boards? (optional note, logged)`, '') || '';
+        try {
+            await api(`/admin-tools/users/${encodeURIComponent(username)}/hide/`, 'POST', {hidden, note});
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+
+// Review filters apply the moment they change; the Filter button
+// stays as the no-JS fallback.
+document.querySelector('.flag-filters')?.addEventListener('change', (e) => {
+    if (e.target.matches('input, select')) e.target.form.submit();
+});
+
+// Mark-all-reviewed: one optional note clears every open flag shown
+// in the row. Dismissing and confirming stay per-flag, where the
+// required note belongs to a single finding.
+document.querySelectorAll('[data-review-all]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const ids = btn.dataset.reviewAll.split(',').map(s => parseInt(s, 10)).filter(n => !isNaN(n));
+        if (!ids.length) return;
+        const note = prompt(`Mark ${ids.length} flag${ids.length === 1 ? '' : 's'} reviewed? (optional note, logged for each)`, '') || '';
+        try {
+            btn.disabled = true;
+            const res = await api('/admin-tools/flags/review-many/', 'POST', {ids, note});
+            alert(`Marked ${res.reviewed} reviewed${res.skipped ? `, ${res.skipped} already closed` : ''}.`);
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        } finally {
+            btn.disabled = false;
         }
     });
 });

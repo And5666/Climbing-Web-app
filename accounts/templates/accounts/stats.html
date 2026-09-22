@@ -105,7 +105,7 @@
             <ul class="plain rank-list">
                 {% for ascent in recent %}
                     <li><span><span class="grade-pill {{ ascent.climb.tag_class }}">{{ ascent.climb.grade }}</span>
-                        {{ ascent.climb.name|default:ascent.climb.colour }} · {{ ascent.climb.get_wall_display }}</span>
+                        {{ ascent.climb.name|default:ascent.climb.colour_name }} · {{ ascent.climb.get_wall_display }}</span>
                         <span class="muted">{{ ascent.logged_at|date:"d/m/Y" }}</span></li>
                 {% endfor %}
             </ul>

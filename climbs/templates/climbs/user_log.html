@@ -1,0 +1,165 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}Admin · {{ log_user.username }} log{% endblock %}
+
+{% block content %}
+<div class="admin-topbar">
+    <a href="{% url 'climbs:climb-admin' %}">Climb edit</a>
+    <a href="{% url 'climbs:board-admin' %}">Leaderboards</a>
+</div>
+<div class="narrow">
+    <section class="card">
+        <h3>Climb log · {{ log_user.username }}{% if log_user.leaderboard_hidden %} <span class="muted">(hidden from boards)</span>{% endif %}</h3>
+        <p class="muted">Stored UTC, shown in Europe/London. Flags below are needs-review notes for staff only — never auto-punishing.</p>
+        <div class="profile-stats">
+            <div><span class="stat-num">{{ totals.sends }}</span><span class="stat-label">sends</span></div>
+            <div><span class="stat-num">{{ totals.points }}</span><span class="stat-label">pts</span></div>
+            <div><span class="stat-num">{{ totals.flashes }}</span><span class="stat-label">flashes</span></div>
+            <div><span class="stat-num">{{ totals.voided }}</span><span class="stat-label">voided</span></div>
+            <div><span class="stat-num">⚑ {{ totals.suspicion }}</span><span class="stat-label">needs review</span></div>
+        </div>
+        <form method="get" class="flag-filters">
+            <label>Wall
+                <select name="wall">
+                    {% for value, label in wall_choices %}
+                        <option value="{{ value }}"{% if wall == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>From <input type="date" name="from" value="{{ date_from }}"></label>
+            <label>To <input type="date" name="to" value="{{ date_to }}"></label>
+            <label>Flags
+                <select name="flagged">
+                    <option value="all"{% if flagged == "all" %} selected{% endif %}>All</option>
+                    <option value="flagged"{% if flagged == "flagged" %} selected{% endif %}>Needs review</option>
+                    <option value="unflagged"{% if flagged == "unflagged" %} selected{% endif %}>No flags</option>
+                </select>
+            </label>
+            <label>Status
+                <select name="voided">
+                    <option value="all"{% if voided == "all" %} selected{% endif %}>All</option>
+                    <option value="active"{% if voided == "active" %} selected{% endif %}>Scoring</option>
+                    <option value="voided"{% if voided == "voided" %} selected{% endif %}>Voided</option>
+                </select>
+            </label>
+            <button class="btn btn-sm btn-secondary" type="submit">Filter</button>
+            <button class="btn btn-sm btn-secondary" type="submit" name="format" value="csv">CSV export</button>
+        </form>
+        {% if ascents %}
+            <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>Date</th><th>Climb</th><th>Wall</th><th>Colour</th><th>Grade</th><th>Tries</th><th>Pts</th><th>Status</th><th>Flags</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for ascent in ascents %}
+                        <tr>
+                            <td>{{ ascent.local_time|date:"d/m/Y H:i" }}</td>
+                            <td>{{ ascent.climb.name|default:ascent.climb.colour_name }} <span class="muted">#{{ ascent.climb_id }}</span></td>
+                            <td>{{ ascent.climb.get_wall_display }}</td>
+                            <td><span class="colour-dot" style="background:{{ ascent.climb.colour_hex }}" aria-hidden="true"></span>{{ ascent.climb.colour_name }}</td>
+                            <td>{{ ascent.climb.grade }}</td>
+                            <td>{% if ascent.tries >= 5 %}5+{% else %}{{ ascent.tries }}{% endif %}</td>
+                            <td>{{ ascent.points }}</td>
+                            <td>{% if ascent.is_voided %}Voided{% if ascent.void_reason %} ({{ ascent.void_reason }}){% endif %}{% else %}Scoring{% endif %}</td>
+                            <td>
+                                {% for flag in ascent.flags.all %}
+                                    <span>{{ flag.rule_code }} ({{ flag.severity }}/{{ flag.status }})</span>{% if not forloop.last %}; {% endif %}
+                                {% empty %}
+                                    <span class="muted">—</span>
+                                {% endfor %}
+                            </td>
+                            <td>
+                                {% if ascent.is_voided %}
+                                    <button class="btn btn-sm btn-secondary" data-unvoid="{{ ascent.id }}" type="button">Restore</button>
+                                {% else %}
+                                    <button class="btn btn-sm btn-secondary" data-void="{{ ascent.id }}" type="button">Void</button>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        {% else %}
+            <p class="muted">Nothing logged with these filters.</p>
+        {% endif %}
+    </section>
+    <section class="card">
+        <h3>Edit history</h3>
+        {% if audits %}
+            <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr><th>When</th><th>Action</th><th>By</th><th>Climb</th><th>Tries</th><th>Grade</th><th>Points</th><th>Note</th></tr>
+                </thead>
+                <tbody>
+                    {% for audit in audits %}
+                        <tr>
+                            <td>{{ audit.local_time|date:"d/m/Y H:i" }}</td>
+                            <td>{{ audit.action }}</td>
+                            <td>{{ audit.actor|default:audit.user }}</td>
+                            <td>{% if audit.climb %}#{{ audit.climb.id }} {{ audit.climb.name|default:audit.climb.colour_name }}{% else %}—{% endif %}</td>
+                            <td>{{ audit.old_tries|default:"—" }} → {{ audit.new_tries|default:"—" }}</td>
+                            <td>{{ audit.old_grade|default:"—" }} → {{ audit.new_grade|default:"—" }}</td>
+                            <td>{{ audit.old_points|default:"—" }} → {{ audit.new_points|default:"—" }}</td>
+                            <td>{{ audit.note|default:"—" }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            </div>
+        {% else %}
+            <p class="muted">No logged changes yet.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function getCookie(name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : null;
+}
+
+async function api(url, method, body) {
+    const res = await fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+    return data;
+}
+
+document.querySelectorAll('[data-void]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const reason = prompt('Why is this send voided? (required, logged)', '');
+        if (reason === null || !reason.trim()) {
+            if (reason !== null) alert('A reason is required.');
+            return;
+        }
+        try {
+            await api(`/admin-tools/ascents/${btn.dataset.void}/void/`, 'POST', {void: true, reason: reason.trim()});
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+
+document.querySelectorAll('[data-unvoid]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+        const note = prompt('Restore this send to scoring? (optional note, logged)', '') || '';
+        try {
+            await api(`/admin-tools/ascents/${btn.dataset.unvoid}/void/`, 'POST', {void: false, note});
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+        }
+    });
+});
+</script>
+{% endblock %}

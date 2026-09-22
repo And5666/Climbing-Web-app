@@ -61,25 +61,25 @@
                         {% if wall.stats.best_rated %}
                         <li><span>Best rated</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.best_rated.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.best_rated.climb.tag_class }}">{{ wall.stats.best_rated.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.best_rated.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.best_rated.climb.name|default:wall.stats.best_rated.climb.colour }}</button></form> <span class="rating-num">{{ wall.stats.best_rated.avg }} ({{ wall.stats.best_rated.count }})</span></span>
+                            <span class="colour-dot" style="background:{{ wall.stats.best_rated.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.best_rated.climb.name|default:wall.stats.best_rated.climb.colour_name }}</button></form> <span class="rating-num">{{ wall.stats.best_rated.avg }} ({{ wall.stats.best_rated.count }})</span></span>
                         </li>
                         {% endif %}
                         {% if wall.stats.most_popular %}
                         <li><span>Most popular</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.most_popular.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.most_popular.climb.tag_class }}">{{ wall.stats.most_popular.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.most_popular.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.most_popular.climb.name|default:wall.stats.most_popular.climb.colour }}</button></form> {{ wall.stats.most_popular.sends }} sends</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.most_popular.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.most_popular.climb.name|default:wall.stats.most_popular.climb.colour_name }}</button></form> {{ wall.stats.most_popular.sends }} sends</span>
                         </li>
                         {% endif %}
                         {% if wall.stats.softest %}
                         <li><span>Softest</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.softest.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.softest.climb.tag_class }}">{{ wall.stats.softest.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.softest.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.softest.climb.name|default:wall.stats.softest.climb.colour }}</button></form> {{ wall.stats.softest.votes }} softer</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.softest.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.softest.climb.name|default:wall.stats.softest.climb.colour_name }}</button></form> {{ wall.stats.softest.votes }} softer</span>
                         </li>
                         {% endif %}
                         {% if wall.stats.hardest %}
                         <li><span>Hardest</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.hardest.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.hardest.climb.tag_class }}">{{ wall.stats.hardest.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.hardest.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.hardest.climb.name|default:wall.stats.hardest.climb.colour }}</button></form> {{ wall.stats.hardest.votes }} harder</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.hardest.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.hardest.climb.name|default:wall.stats.hardest.climb.colour_name }}</button></form> {{ wall.stats.hardest.votes }} harder</span>
                         </li>
                         {% endif %}
                         <li class="stat-total"><span>Total</span>
