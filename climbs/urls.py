@@ -11,6 +11,8 @@ urlpatterns = [
     path("news/<int:post_id>/update/", views.news_update_api, name="news-update"),
     path("news/<int:post_id>/delete/", views.news_delete_api, name="news-delete"),
     path("climbers/<str:username>/", views.climber_api, name="climber-detail"),
+    path("leaderboard/sets/<int:set_id>/users/<str:username>/sends/",
+         views.set_user_sends_api, name="set-user-sends"),
     path("<int:climb_id>/", views.climb_detail_api, name="climb-detail"),
     path("<int:climb_id>/ascent/", views.ascent_api, name="climb-ascent"),
     path("<int:climb_id>/rate/", views.rating_api, name="climb-rate"),

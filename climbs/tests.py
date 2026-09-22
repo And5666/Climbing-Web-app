@@ -940,6 +940,17 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
         self.assertNotContains(
             response, '<span class="graph-grade">V5</span>')
 
+    def test_leaderboard_dots_match_admin_colour(self):
+        # Stat dots render the stored colour raw, like the map and
+        # admin markers — not the remapped tape hex.
+        user = self.make_user("dotfan")
+        climb = self.make_climb(name="Dot", grade="V4")
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        response = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(response, 'style="background:red"')
+        self.assertNotContains(response, 'background:#e03131')
+
 
 class AdminApiTests(ClimbTestMixin, TestCase):
     def test_create_on_empty_wall_shows_on_map_and_admin(self):
@@ -2245,6 +2256,7 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(response, '<th class="rank">#</th>')
         self.assertContains(response, "1 climber")
         self.assertContains(response, "1 send")
+        self.assertContains(response, "1 climb")
         self.assertContains(response, "need review")
         self.assertContains(response, "e.target.form.submit()")
         flagged = self.client.get(
@@ -2288,6 +2300,84 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(loose, "wilduser")
         self.assertNotContains(loose, "milduser")
         self.assertContains(loose, "Clear")
+
+    def test_board_shows_only_viewed_set_flags(self):
+        # Ascent-tied flags from other sets stay off this board;
+        # user-level flags (no ascent: whole-history patterns) stay
+        # visible wherever the climber boards.
+        from climbs.models import Climb, ClimbSet, Flag
+        staff = self.make_user("scopestaff", staff=True)
+        self.client.force_login(staff)
+        user = self.make_user("scopeuser")
+        climb_a = self.make_climb(name="Here", grade="V4")
+        set_a = climb_a.climb_set
+        set_b = ClimbSet.objects.create(
+            wall="main", label="Other", is_active=False)
+        climb_b = Climb.objects.create(
+            name="There", grade="V4", tag="white", colour="blue",
+            wall="main", climb_set=set_b, x_percent=10, y_percent=10)
+        ascent_a = climb_a.ascents.create(
+            user=user, tries=1, points=calculate_points("V4", 1))
+        ascent_b = climb_b.ascents.create(
+            user=user, tries=1, points=calculate_points("V4", 1))
+        Flag.objects.create(
+            user=user, ascent=ascent_a, rule_code="this_set_rule",
+            severity="high", points=25,
+            details={"summary": "suspicious here"})
+        Flag.objects.create(
+            user=user, ascent=ascent_b, rule_code="other_set_rule",
+            severity="high", points=25,
+            details={"summary": "suspicious there"})
+        Flag.objects.create(
+            user=user, rule_code="whole_history_rule", severity="low",
+            points=5, details={"summary": "pattern everywhere"})
+        response = self.client.get(
+            reverse("climbs:board-admin") + f"?wall=main&set={set_a.id}")
+        self.assertContains(response, "this_set_rule")
+        self.assertContains(response, "whole_history_rule")
+        self.assertNotContains(response, "other_set_rule")
+        self.assertContains(response, "Needs review (2)")
+        self.assertContains(response, "⚑ 30")
+
+    def test_same_rule_flags_group_into_one_line(self):
+        # Ten flashes then five more read as one grouped line with a
+        # combined points total, not fifteen separate entries.
+        from climbs.models import Flag
+        staff = self.make_user("groupstaff", staff=True)
+        self.client.force_login(staff)
+        user = self.make_user("groupuser")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        for n in range(3):
+            Flag.objects.create(
+                user=user, rule_code="repeat_rule", severity="high",
+                points=10, details={"summary": f"flash {n}"})
+        Flag.objects.create(
+            user=user, rule_code="other_rule", severity="low",
+            points=5, details={"summary": "one off"})
+        response = self.client.get(reverse("climbs:board-admin"))
+        content = response.content.decode()
+        self.assertContains(response, "repeat_rule")
+        self.assertContains(response, "×3")
+        self.assertContains(response, "+30 pts")
+        self.assertEqual(content.count("repeat_rule"), 1)
+        self.assertContains(response, "Needs review (4)")
+
+    def test_leaderboard_shows_total_climbs(self):
+        # The board names how many climbs the set holds, and your
+        # line counts your sends against it.
+        user = self.make_user("counter")
+        for name in ("One", "Two", "Three"):
+            climb = self.make_climb(name=name)
+            if name == "One":
+                climb.ascents.create(
+                    user=user, tries=1,
+                    points=calculate_points("V4", 1))
+        self.client.force_login(user)
+        response = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(response, "3 climbs")
+        self.assertContains(response, "1 of 3 sends")
 
     def test_flag_numbers_explain_themselves(self):
         # The badge total and each flag's weight are labelled: the
@@ -2697,14 +2787,95 @@ class AntiCheatTests(ClimbTestMixin, TestCase):
         self.assertContains(response, "Needs review")
         self.assertContains(response, "9/10 sends were flashes")
         self.assertContains(response, "data-flag-dismiss")
-        self.assertContains(
-            response, reverse("climbs:user-log", args=["flagged"]))
+        # The climber opens their per-set log in the card, not the
+        # staff user-log page (staff reach that from the card).
+        self.assertContains(response, 'data-username="flagged"')
+        self.assertContains(response, "data-set-id=")
         flagged = self.client.get(
             reverse("climbs:board-admin") + "?flagged=1")
         self.assertContains(flagged, "flagged")
         susp = self.client.get(
             reverse("climbs:board-admin") + "?suspicion=20")
         self.assertContains(susp, "flagged")
+
+    def test_set_user_sends_returns_set_log(self):
+        # Tapping a board name shows every climb of theirs on that
+        # set: climb, grade, tries, points and time, newest first.
+        # Voided sends stay out; mystery grades stay '?'.
+        user = self.make_user("logger")
+        first = self.make_climb(name="First", grade="V2")
+        first.ascents.create(user=user, tries=2,
+                             points=calculate_points("V2", 2))
+        second = self.make_climb(name="Second", grade="V5")
+        second.ascents.create(user=user, tries=1,
+                              points=calculate_points("V5", 1))
+        gone = self.make_climb(name="Gone", grade="V1")
+        bad = gone.ascents.create(user=user, tries=1,
+                                  points=calculate_points("V1", 1))
+        bad.is_voided = True
+        bad.save()
+        secret = self.make_climb(name="Secret", grade="V6",
+                                 tag="mystery")
+        secret.ascents.create(
+            user=user, tries=3,
+            points=calculate_points("V6", 3, tag="mystery"))
+        set_id = first.climb_set.id
+        response = self.client.get(reverse(
+            "climbs:set-user-sends", args=[set_id, "logger"]))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["username"], "logger")
+        got = [(s["climb"], s["grade"], s["tries"], s["points"])
+               for s in data["sends"]]
+        self.assertEqual(got, [
+            ("Secret", "?", 3, MYSTERY_FIXED_POINTS),
+            ("Second", "V5", 1, calculate_points("V5", 1)),
+            ("First", "V2", 2, calculate_points("V2", 2)),
+        ])
+        self.assertTrue(
+            all("time" in s and s["time"] for s in data["sends"]))
+        self.assertEqual(self.client.get(reverse(
+            "climbs:set-user-sends",
+            args=[999999, "logger"])).status_code, 404)
+        self.assertEqual(self.client.get(reverse(
+            "climbs:set-user-sends",
+            args=[set_id, "nobody"])).status_code, 404)
+
+    def test_set_user_sends_hides_hidden_users(self):
+        # Board-hidden climbers stay private to everyone but staff.
+        user = self.make_user("shy")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        user.leaderboard_hidden = True
+        user.save()
+        url = reverse("climbs:set-user-sends",
+                      args=[climb.climb_set.id, "shy"])
+        self.assertEqual(self.client.get(url).status_code, 404)
+        staff = self.make_user("shystaff", staff=True)
+        self.client.force_login(staff)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_board_chips_carry_set_context(self):
+        # Both leaderboards open the per-set log: chips carry the
+        # viewed set, the card fetches it, staff get a full-log
+        # link inside the card.
+        user = self.make_user("chippy")
+        climb = self.make_climb()
+        climb.ascents.create(user=user, tries=1,
+                             points=calculate_points("V4", 1))
+        board = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(board, 'data-username="chippy"')
+        self.assertContains(
+            board, f'data-set-id="{climb.climb_set.id}"')
+        self.assertContains(board, "chip.dataset.setId")
+        staff = self.make_user("chipstaff", staff=True)
+        self.client.force_login(staff)
+        admin = self.client.get(reverse("climbs:board-admin"))
+        self.assertContains(admin, 'data-username="chippy"')
+        self.assertContains(
+            admin, f'data-set-id="{climb.climb_set.id}"')
+        self.assertContains(admin, "Full log")
 
     def test_user_log_page_and_csv(self):
         from climbs.models import Flag

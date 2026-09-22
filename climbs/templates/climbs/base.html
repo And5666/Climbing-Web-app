@@ -68,7 +68,7 @@
 
     <div class="watermark" aria-hidden="true">summit<span class="brand-mark">_map</span></div>
 
-    <div id="user-card" aria-hidden="true">
+    <div id="user-card" aria-hidden="true" data-staff="{% if user.is_staff %}1{% endif %}">
         <div class="user-scrim" data-close-user></div>
         <section class="user-box" role="dialog" aria-modal="true" aria-label="Climber">
             <button class="user-x" data-close-user aria-label="Close">×</button>
@@ -97,7 +97,12 @@
                 body.innerHTML = '';
             }
 
-            async function openCard(username) {
+            // Leaderboard chips also carry the viewed set: the card
+            // then appends that climber's whole log on the set
+            // (climb, grade, tries, points, time, newest first).
+            // Chips without a set (comments, map popups) keep the
+            // profile alone.
+            async function openCard(username, setId) {
                 body.innerHTML = '<p class="muted">Loading…</p>';
                 card.classList.add('open');
                 card.setAttribute('aria-hidden', 'false');
@@ -117,7 +122,7 @@
                               ' · ' + r.points + ' pts</span>'
                             : '<span class="muted">unranked</span>') + '</li>'
                     ).join('');
-                    body.innerHTML =
+                    let html =
                         '<div class="profile-head">' + pic +
                         '<div><h3>' + esc(u.username) + '</h3>' +
                         '<p class="muted">climbing since ' + esc(u.since) + '</p></div></div>' +
@@ -127,6 +132,38 @@
                         '<div><span class="stat-num">' + esc(u.best_grade || '—') + '</span><span class="stat-label">best</span></div>' +
                         '</div>' +
                         (ranks ? '<ul class="plain rank-list">' + ranks + '</ul>' : '');
+                    if (setId) {
+                        try {
+                            const r2 = await fetch(
+                                '/leaderboard/sets/' + setId + '/users/' +
+                                encodeURIComponent(username) + '/sends/');
+                            if (r2.ok) {
+                                const log = await r2.json();
+                                const sends = log.sends || [];
+                                const rows = sends.map(s =>
+                                    '<tr><td>' + esc(s.climb) + '</td>' +
+                                    '<td>' + esc(s.grade) + '</td>' +
+                                    '<td class="num">' + s.tries + '</td>' +
+                                    '<td class="num">' + s.points + '</td>' +
+                                    '<td class="muted">' + esc(s.time) + '</td></tr>'
+                                ).join('');
+                                html += '<h4 class="log-head">Sends on this set (' +
+                                    sends.length + ')</h4>' +
+                                    (sends.length
+                                        ? '<div class="table-wrap"><table class="send-log-table">' +
+                                          '<thead><tr><th>Climb</th><th>Grade</th>' +
+                                          '<th class="num">Tries</th><th class="num">Points</th>' +
+                                          '<th>Time</th></tr></thead><tbody>' + rows +
+                                          '</tbody></table></div>'
+                                        : '<p class="muted">No sends on this set.</p>');
+                                if (card.dataset.staff) {
+                                    html += '<p><a class="btn btn-sm btn-secondary" href="/admin-tools/users/' +
+                                        encodeURIComponent(username) + '/log/">Full log</a></p>';
+                                }
+                            }
+                        } catch (e2) { /* profile still stands without the log */ }
+                    }
+                    body.innerHTML = html;
                 } catch (e) {
                     body.innerHTML = '<p class="muted">Could not load that climber.</p>';
                 }
@@ -135,7 +172,7 @@
             document.addEventListener('click', (e) => {
                 const chip = e.target.closest('[data-username]');
                 if (chip) {
-                    openCard(chip.dataset.username);
+                    openCard(chip.dataset.username, chip.dataset.setId);
                     return;
                 }
                 if (e.target.closest('[data-close-user]')) closeCard();

@@ -9,7 +9,7 @@
     <div class="board-columns">
         {% for wall in walls %}
             <section class="board">
-                <h3>{{ wall.wall_display }}</h3>
+                <h3>{{ wall.wall_display }}{% if wall.climb_count %} <span class="muted">{{ wall.climb_count }} climbs</span>{% endif %}</h3>
                 {% if wall.is_archived %}
                     <p class="archive-note">Archived · {{ wall.selected_set.range_start|date:"j M Y" }}{% if wall.selected_set.range_end %} – {{ wall.selected_set.range_end|date:"j M Y" }}{% endif %}</p>
                     <form method="get" action="{% url 'climbs:leaderboard' %}" class="archive-back">
@@ -17,7 +17,7 @@
                     </form>
                 {% endif %}
                 {% if wall.me %}
-                    <p class="me-line"><span class="row-user">{% if wall.me.avatar %}<img src="{% get_media_prefix %}{{ wall.me.avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>{% endif %}You: #{{ wall.me.rank }} of {{ wall.me.of }} · {{ wall.me.points }} pts · {{ wall.me.climbs }} sends</span></p>
+                    <p class="me-line"><span class="row-user">{% if wall.me.avatar %}<img src="{% get_media_prefix %}{{ wall.me.avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>{% endif %}You: #{{ wall.me.rank }} of {{ wall.me.of }} · {{ wall.me.points }} pts · {{ wall.me.climbs }} of {{ wall.climb_count }} sends</span></p>
                 {% elif user.is_authenticated %}
                     <p class="muted">You're unranked here — log a send to join.</p>
                 {% endif %}
@@ -31,7 +31,7 @@
                                 {% for row in wall.rows %}
                                     <tr class="{% if row.position == 1 %}winner {% endif %}{% if row.user__username == user.username %}me {% endif %}{% if forloop.counter > 10 %}extra-row{% endif %}"{% if forloop.counter > 10 %} hidden{% endif %}>
                                         <td>{% if row.position <= 3 %}<span class="pos-{{ row.position }}">{{ row.position }}</span>{% else %}{{ row.position }}{% endif %}</td>
-                                        <td><button class="user-chip row-user" data-username="{{ row.user__username }}" type="button">{% if row.user__avatar %}<img src="{% get_media_prefix %}{{ row.user__avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ row.user__username|first|upper }}</span>{% endif %}{% if row.position == 1 %}<span class="crown" aria-hidden="true">★</span>{% endif %}{{ row.user__username }}</button></td>
+                                        <td><button class="user-chip row-user" data-username="{{ row.user__username }}"{% if wall.selected_set %} data-set-id="{{ wall.selected_set.id }}"{% endif %} type="button">{% if row.user__avatar %}<img src="{% get_media_prefix %}{{ row.user__avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ row.user__username|first|upper }}</span>{% endif %}{% if row.position == 1 %}<span class="crown" aria-hidden="true">★</span>{% endif %}{{ row.user__username }}</button></td>
                                         <td>{{ row.climb_count }}</td>
                                         <td>{{ row.total_points }}</td>
                                     </tr>
@@ -61,25 +61,25 @@
                         {% if wall.stats.best_rated %}
                         <li><span>Best rated</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.best_rated.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.best_rated.climb.tag_class }}">{{ wall.stats.best_rated.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.best_rated.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.best_rated.climb.name|default:wall.stats.best_rated.climb.colour_name }}</button></form> <span class="rating-num">{{ wall.stats.best_rated.avg }} ({{ wall.stats.best_rated.count }})</span></span>
+                            <span class="colour-dot" style="background:{{ wall.stats.best_rated.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.best_rated.climb.name|default:wall.stats.best_rated.climb.colour_name }}</button></form> <span class="rating-num">{{ wall.stats.best_rated.avg }} ({{ wall.stats.best_rated.count }})</span></span>
                         </li>
                         {% endif %}
                         {% if wall.stats.most_popular %}
                         <li><span>Most popular</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.most_popular.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.most_popular.climb.tag_class }}">{{ wall.stats.most_popular.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.most_popular.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.most_popular.climb.name|default:wall.stats.most_popular.climb.colour_name }}</button></form> {{ wall.stats.most_popular.sends }} sends</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.most_popular.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.most_popular.climb.name|default:wall.stats.most_popular.climb.colour_name }}</button></form> {{ wall.stats.most_popular.sends }} sends</span>
                         </li>
                         {% endif %}
                         {% if wall.stats.softest %}
                         <li><span>Softest</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.softest.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.softest.climb.tag_class }}">{{ wall.stats.softest.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.softest.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.softest.climb.name|default:wall.stats.softest.climb.colour_name }}</button></form> {{ wall.stats.softest.votes }} softer</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.softest.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.softest.climb.name|default:wall.stats.softest.climb.colour_name }}</button></form> {{ wall.stats.softest.votes }} softer</span>
                         </li>
                         {% endif %}
                         {% if wall.stats.hardest %}
                         <li><span>Hardest</span>
                             <span><form method="get" action="{% url 'climbs:map' %}" class="stat-go"><input type="hidden" name="climb" value="{{ wall.stats.hardest.climb.id }}"><button type="submit"><span class="grade-pill {{ wall.stats.hardest.climb.tag_class }}">{{ wall.stats.hardest.climb.display_grade }}</span>
-                            <span class="colour-dot" style="background:{{ wall.stats.hardest.climb.colour_hex }}" aria-hidden="true"></span>{{ wall.stats.hardest.climb.name|default:wall.stats.hardest.climb.colour_name }}</button></form> {{ wall.stats.hardest.votes }} harder</span>
+                            <span class="colour-dot" style="background:{{ wall.stats.hardest.climb.colour }}" aria-hidden="true"></span>{{ wall.stats.hardest.climb.name|default:wall.stats.hardest.climb.colour_name }}</button></form> {{ wall.stats.hardest.votes }} harder</span>
                         </li>
                         {% endif %}
                         <li class="stat-total"><span>Total</span>

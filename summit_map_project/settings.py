@@ -196,21 +196,21 @@ ANTI_CHEAT = {
     # community flash rate below low_rate; >= repeat such flashes flags.
     "community_flash_min_ascents": 5,
     "community_flash_low_rate": 0.20,
-    "community_flash_repeat": 2,
+    "community_flash_repeat": 3,
     # 4. Tries vs peers: user's average tries across >= min_shared
     # climbs shared with others is >= margin below the others' average.
     "tries_peer_min_shared": 3,
-    "tries_peer_margin": 2.0,
+    "tries_peer_margin": 2.5,
     # 5. Impossible pace: a log arriving sooner after the previous one
     # than minutes_per_attempt x claimed tries, or >= pace_count logs
     # inside pace_window_minutes.
-    "minutes_per_attempt": 2.0,
-    "pace_count": 5,
+    "minutes_per_attempt": 1.5,
+    "pace_count": 6,
     "pace_window_minutes": 30,
     # 6. Bulk or odd-hours: >= bulk_per_minute logs sharing one minute,
     # or logs outside gym_open_hour_start..gym_open_hour_end (24h).
     # The gym opens 10:00 and closes 22:00.
-    "bulk_per_minute": 3,
+    "bulk_per_minute": 4,
     "gym_open_hour_start": 10,
     "gym_open_hour_end": 22,
     # 7. Tries edited downward after logging (from the audit table).
@@ -219,7 +219,7 @@ ANTI_CHEAT = {
     # 8. Rapid rank jump: >= points_24h gained in 24h (and above peers
     # when enough users exist), or a new account (< new_account_days
     # old) reaching the top 3.
-    "rank_jump_points_24h": 1500,
+    "rank_jump_points_24h": 2000,
     "new_account_days": 7,
     # 9. Send-rate outlier: per-user per-day sessions with >=
     # min_sends are measured in sends/minute (first-to-last log that
@@ -234,14 +234,14 @@ ANTI_CHEAT = {
     # grade (base + per_grade x grade number); a send logged sooner
     # after the previous log than tries x that floor flags. 10 V0s
     # in an hour is normal, 10 V5s is not.
-    "grade_pace_base_minutes": 1.5,
-    "grade_pace_per_grade_minutes": 0.5,
+    "grade_pace_base_minutes": 1.0,
+    "grade_pace_per_grade_minutes": 0.4,
     # 11. Flash drift: the last window_sends sends flash at a rate >=
     # margin above the user's earlier baseline (>= min_history sends),
     # and harder when that window burst in within burst_days.
     "flash_drift_window_sends": 10,
     "flash_drift_min_history": 10,
-    "flash_drift_margin": 0.35,
+    "flash_drift_margin": 0.45,
     "flash_drift_burst_days": 7,
     # 12. Grade-jump velocity: max grade logged in the last jump_days
     # >= jump_grades above the user's earlier max (>= min_history
@@ -253,7 +253,7 @@ ANTI_CHEAT = {
     # gap between logs is under median_gap_seconds reads as
     # batch-logged after the fact — real sessions have rest gaps.
     "cluster_min_sends": 8,
-    "cluster_median_gap_seconds": 90,
+    "cluster_median_gap_seconds": 60,
     # 14. Peer z-score: the user's mean sends per visit (user-day)
     # against the gym-wide mean/stdev of the same, needing >=
     # min_days of visits so one great day never flags — only a

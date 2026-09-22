@@ -43,6 +43,8 @@
                         <span aria-hidden="true">·</span>
                         <span>{{ total_sends }} send{{ total_sends|pluralize }}</span>
                         <span aria-hidden="true">·</span>
+                        <span>{{ climb_count }} climb{{ climb_count|pluralize }}</span>
+                        <span aria-hidden="true">·</span>
                         <span{% if open_flag_count %} class="review-attn"{% endif %}>{{ open_flag_count }} need review</span>
                     </p>
                 {% endif %}
@@ -83,7 +85,7 @@
                         {% for row in board %}
                             <tr{% if row.shown_open %} class="has-flags"{% endif %}>
                                 <td class="rank">{{ forloop.counter }}</td>
-                                <td><a href="{% url 'climbs:user-log' row.user__username %}">{{ row.user__username }}</a>{% if row.hidden %} <span class="pill pill-muted">hidden from board</span>{% endif %}</td>
+                                <td><button class="user-chip" data-username="{{ row.user__username }}" data-set-id="{{ selected.id }}" type="button">{{ row.user__username }}</button>{% if row.hidden %} <span class="pill pill-muted">hidden from board</span>{% endif %}</td>
                                 <td class="num">{{ row.sends }}</td>
                                 <td class="num">{{ row.points }}</td>
                                 <td>
@@ -92,44 +94,58 @@
                                         <details class="flag-list">
                                             <summary>Needs review ({{ row.shown_open|length }})</summary>
                                             <button class="btn btn-sm btn-secondary" data-review-all="{% for flag in row.shown_open %}{{ flag.id }}{% if not forloop.last %},{% endif %}{% endfor %}" type="button">Mark all reviewed</button>
-                                            <ul>
-                                                {% for flag in row.shown_open %}
-                                                    <li class="flag-item" data-flag="{{ flag.id }}">
-                                                        <div class="flag-top">
-                                                            <strong>{{ flag.rule_code }}</strong>
-                                                            <span class="pill sev-{{ flag.severity }}">{{ flag.severity }}</span>
-                                                            <span class="pill flag-pts">+{{ flag.points }} pts</span>
-                                                            <span class="muted">{{ flag.created_at|date:"d/m/Y H:i" }}</span>
-                                                        </div>
-                                                        <p>{{ flag.details.summary }}</p>
-                                                        {% if flag.note %}<p class="flag-note">Note: {{ flag.note }}</p>{% endif %}
-                                                        <div class="flag-actions">
-                                                            <button class="btn btn-sm btn-secondary" data-flag-review="{{ flag.id }}" type="button">Mark reviewed</button>
-                                                            <button class="btn btn-sm btn-secondary" data-flag-dismiss="{{ flag.id }}" type="button">Dismiss</button>
-                                                            <button class="btn btn-sm btn-secondary" data-flag-confirm="{{ flag.id }}" type="button">Confirm</button>
-                                                        </div>
-                                                    </li>
-                                                {% endfor %}
-                                            </ul>
+                                            {% for g in row.open_groups %}
+                                                <div class="flag-group">
+                                                    <div class="flag-group-head">
+                                                        <strong>{{ g.rule }}</strong>
+                                                        <span class="pill sev-{{ g.severity }}">{{ g.severity }}</span>
+                                                        {% if g.count > 1 %}<span class="pill pill-muted">×{{ g.count }}</span>{% endif %}
+                                                        <span class="pill flag-pts">+{{ g.points }} pts</span>
+                                                    </div>
+                                                    <ul>
+                                                        {% for flag in g.flags %}
+                                                            <li class="flag-item" data-flag="{{ flag.id }}">
+                                                                <div class="flag-top">
+                                                                    <span class="muted">{{ flag.created_at|date:"d/m/Y H:i" }}</span>
+                                                                </div>
+                                                                <p>{{ flag.details.summary }}</p>
+                                                                {% if flag.note %}<p class="flag-note">Note: {{ flag.note }}</p>{% endif %}
+                                                                <div class="flag-actions">
+                                                                    <button class="btn btn-sm btn-secondary" data-flag-review="{{ flag.id }}" type="button">Mark reviewed</button>
+                                                                    <button class="btn btn-sm btn-secondary" data-flag-dismiss="{{ flag.id }}" type="button">Dismiss</button>
+                                                                    <button class="btn btn-sm btn-secondary" data-flag-confirm="{{ flag.id }}" type="button">Confirm</button>
+                                                                </div>
+                                                            </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </div>
+                                            {% endfor %}
                                         </details>
                                     {% elif row.shown_flags %}
                                         <details class="flag-list">
                                             <summary>Reviewed ({{ row.shown_flags|length }})</summary>
-                                            <ul>
-                                                {% for flag in row.shown_flags %}
-                                                    <li class="flag-item is-closed">
-                                                        <div class="flag-top">
-                                                            <strong>{{ flag.rule_code }}</strong>
-                                                            <span class="pill sev-{{ flag.severity }}">{{ flag.severity }}</span>
-                                                            <span class="pill st-{{ flag.status }}">{{ flag.status }}</span>
-                                                            <span class="pill flag-pts">+{{ flag.points }} pts</span>
-                                                            <span class="muted">{{ flag.created_at|date:"d/m/Y H:i" }}</span>
-                                                        </div>
-                                                        <p>{{ flag.details.summary }}</p>
-                                                        {% if flag.note %}<p class="flag-note">Note: {{ flag.note }}</p>{% endif %}
-                                                    </li>
-                                                {% endfor %}
-                                            </ul>
+                                            {% for g in row.closed_groups %}
+                                                <div class="flag-group">
+                                                    <div class="flag-group-head">
+                                                        <strong>{{ g.rule }}</strong>
+                                                        <span class="pill sev-{{ g.severity }}">{{ g.severity }}</span>
+                                                        <span class="pill st-{{ g.status }}">{{ g.status }}</span>
+                                                        {% if g.count > 1 %}<span class="pill pill-muted">×{{ g.count }}</span>{% endif %}
+                                                        <span class="pill flag-pts">+{{ g.points }} pts</span>
+                                                    </div>
+                                                    <ul>
+                                                        {% for flag in g.flags %}
+                                                            <li class="flag-item is-closed">
+                                                                <div class="flag-top">
+                                                                    <span class="muted">{{ flag.created_at|date:"d/m/Y H:i" }}</span>
+                                                                </div>
+                                                                <p>{{ flag.details.summary }}</p>
+                                                                {% if flag.note %}<p class="flag-note">Note: {{ flag.note }}</p>{% endif %}
+                                                            </li>
+                                                        {% endfor %}
+                                                    </ul>
+                                                </div>
+                                            {% endfor %}
                                         </details>
                                     {% else %}
                                         <span class="muted">—</span>

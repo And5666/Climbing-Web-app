@@ -2022,6 +2022,37 @@ ul.plain li {
     gap: 0.3rem 0.5rem;
 }
 
+/* Grouped findings: one rule, one header line with the combined
+   points; the individual sends stay listed underneath. Fifteen
+   flashes read as a single row until expanded. */
+.flag-group {
+    margin-top: 0.55rem;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-sm);
+    padding: 0.5rem 0.6rem;
+    background: var(--surface-2);
+}
+
+.flag-group-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem 0.5rem;
+}
+
+.flag-group-head strong {
+    font-size: 0.82rem;
+    overflow-wrap: anywhere;
+}
+
+.flag-group ul {
+    margin-top: 0.35rem;
+}
+
+.flag-group .flag-item:not(.is-closed) {
+    background: var(--surface);
+}
+
 .flag-top strong {
     font-size: 0.82rem;
     overflow-wrap: anywhere;
@@ -3343,6 +3374,52 @@ button.user-chip:hover {
     color: var(--muted);
     font-size: 1.3rem;
     cursor: pointer;
+}
+
+/* Per-set send log inside the climber card (both leaderboards):
+   climb, grade, tries, points and time, newest first. The table
+   scrolls sideways inside the narrow card on small phones. */
+#user-card .log-head {
+    margin: 1.1rem 0 0.4rem;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+}
+
+.send-log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.send-log-table th {
+    color: var(--muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-align: left;
+    padding: 0.4rem 0.35rem;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+}
+
+.send-log-table td {
+    padding: 0.45rem 0.35rem;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+}
+
+.send-log-table .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+#user-card .user-box .btn {
+    width: auto;
+    margin-top: 0.8rem;
 }
 
 /* --- Admin --- */

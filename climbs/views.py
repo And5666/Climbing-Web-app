@@ -301,6 +301,9 @@ def leaderboard_view(request):
             "rows": rows,
             "me": me,
             "stats": _set_stats(selected),
+            "climb_count": (Climb.objects.filter(
+                climb_set=selected).count()
+                if selected is not None else 0),
         })
     return render(request, "climbs/leaderboard.html", {"walls": walls})
 
@@ -394,6 +397,40 @@ def climb_detail_api(request, climb_id):
         "grade_votes": _grade_vote_counts(climb),
         "comments": comments,
         "viewer": viewer,
+    })
+
+
+def set_user_sends_api(request, set_id, username):
+    """One climber's whole log on one set, newest first, for tapping
+    a name on either leaderboard: climb, grade, tries, points and
+    time per send. Non-voided ascents only — no flags, audit trail
+    or voided history (staff keep the full user-log page for that).
+    Mystery grades stay '?' until revealed. Hidden users stay
+    private to everyone but staff."""
+    from django.http import Http404
+    from zoneinfo import ZoneInfo
+    climb_set = get_object_or_404(ClimbSet, id=set_id)
+    user = get_object_or_404(get_user_model(), username=username)
+    if user.leaderboard_hidden and not (
+            request.user.is_authenticated and request.user.is_staff):
+        raise Http404()
+    ascents = (Ascent.objects
+               .filter(user=user, climb__climb_set=climb_set,
+                       is_voided=False)
+               .select_related("climb").order_by("-logged_at", "-id"))
+    london = ZoneInfo("Europe/London")
+    return JsonResponse({
+        "username": user.username,
+        "set": climb_set.label,
+        "sends": [{
+            "climb": a.climb.name or a.climb.colour_name,
+            "colour": a.climb.colour,
+            "grade": a.climb.display_grade,
+            "tries": a.tries,
+            "points": a.points,
+            "time": a.logged_at.astimezone(london).strftime(
+                "%d/%m/%Y %H:%M"),
+        } for a in ascents],
     })
 
 
@@ -654,13 +691,33 @@ def climb_admin_view(request):
     })
 
 
+def _group_flags(flags):
+    """Collapse same-rule flags into display groups (newest first):
+    one header line per rule with a combined points total, keeping
+    the individual findings and their review buttons underneath."""
+    groups = []
+    index = {}
+    for flag in flags:
+        key = (flag.rule_code, flag.severity, flag.status)
+        group = index.get(key)
+        if group is None:
+            group = {"rule": flag.rule_code, "severity": flag.severity,
+                     "status": flag.status, "flags": [], "points": 0}
+            index[key] = group
+            groups.append(group)
+        group["flags"].append(flag)
+        group["points"] += flag.points or 0
+    for group in groups:
+        group["count"] = len(group["flags"])
+    return groups
+
+
 @user_passes_test(staff_check)
 def board_admin_view(request):
     """Staff board with anti-cheat review: a Flags column per user
     (suspicion badge + expandable rule evidence), moderation actions,
     and flagged / suspicion / status filters. The wall tab scopes by
     wall; the set picker scopes by set."""
-    from .anticheat import suspicion_score
     from .models import Flag
     wall, sets, active, selected = _admin_selection(request)
     board = []
@@ -676,8 +733,8 @@ def board_admin_view(request):
         users = {u.username: u
                  for u in User.objects.filter(username__in=usernames)}
         all_flags = list(Flag.objects.filter(
-            user__username__in=usernames).select_related("ascent")
-            .order_by("-created_at"))
+            user__username__in=usernames)
+            .select_related("ascent__climb").order_by("-created_at"))
         by_user = {}
         for flag in all_flags:
             by_user.setdefault(flag.user_id, []).append(flag)
@@ -687,10 +744,18 @@ def board_admin_view(request):
         for row in rows:
             user = users.get(row["user__username"])
             flags = by_name.get(row["user__username"], [])
+            # This board reviews one set: ascent-tied flags show only
+            # when the ascent sits on the viewed set. User-level flags
+            # (no ascent: whole-history patterns like flash rate) stay
+            # visible wherever the climber boards.
             row["hidden"] = user.leaderboard_hidden if user else False
-            row["suspicion"] = suspicion_score(user) if user else 0
-            row["open_flags"] = [f for f in flags if f.status == "open"]
-            row["flags"] = flags
+            row["flags"] = [
+                f for f in flags
+                if f.ascent is None or f.ascent.climb.climb_set_id
+                == selected.id
+            ]
+            row["open_flags"] = [f for f in row["flags"]
+                                 if f.status == "open"]
         flagged_only = request.GET.get("flagged") == "1"
         try:
             suspicion_min = int(request.GET.get("suspicion", "") or 0)
@@ -721,12 +786,21 @@ def board_admin_view(request):
             row["shown_open"] = [f for f in shown if f.status == "open"]
             row["shown_suspicion"] = min(
                 sum(f.points for f in row["shown_open"]), 100)
+            # Fifteen flashes in a row read as one line, not fifteen:
+            # same-rule flags collapse into a group with a combined
+            # points total; the individual findings stay expandable
+            # underneath with their own review buttons.
+            row["open_groups"] = _group_flags(row["shown_open"])
+            row["closed_groups"] = _group_flags(
+                [f for f in shown if f.status != "open"])
         if suspicion_min:
             rows = [r for r in rows
                     if r["shown_suspicion"] >= suspicion_min]
         board = rows
     total_sends = sum(r["sends"] for r in board)
     open_flag_count = sum(len(r["shown_open"]) for r in board)
+    climb_count = (Climb.objects.filter(climb_set=selected).count()
+                   if selected is not None else 0)
     return render(request, "climbs/board_admin.html", {
         "admin_tab": "boards",
         "walls": [{"wall": w, "display": d} for w, d in WALL_CHOICES],
@@ -737,6 +811,7 @@ def board_admin_view(request):
         "board": board,
         "total_sends": total_sends,
         "open_flag_count": open_flag_count,
+        "climb_count": climb_count,
         "flagged_only": request.GET.get("flagged") == "1",
         "suspicion_filter": request.GET.get("suspicion", ""),
         "status_filter": request.GET.get("status", ""),

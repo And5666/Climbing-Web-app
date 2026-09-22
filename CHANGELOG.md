@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Anti-cheat review stays on one set: ascent-tied flags from other
+  sets no longer crowd the board (whole-history patterns stay), and
+  repeat findings collapse into one line per rule with a combined
+  points total. Calmer thresholds: bulk 4/min, pace 6 per 30 min,
+  1.5 min per attempt, grade-pace 1.0 + 0.4/grade, drift margin 0.45,
+  cluster gap 60s, community repeat 3, rank-jump 2000 pts/24h,
+  peer tries margin 2.5.
+- Leaderboards name the set size: per-wall climb totals in the
+  header, your sends counted against them, same total on the admin
+  review line.
 - Tries cost less: multipliers are 1.00 / 0.99 / 0.98 / 0.96 with a
   0.94 floor at 5+, so grade always beats tries — a V8 in 5+ (564)
   outscores a flash V7 (550). V4 flash stays 400, V4 on 5+ is 376
