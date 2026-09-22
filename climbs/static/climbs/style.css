@@ -3357,6 +3357,10 @@ button.user-chip:hover {
 #user-card .user-box {
     position: relative;
     width: min(360px, 92vw);
+    /* Long send logs scroll inside the card instead of running
+       off the page, even with the full list expanded. */
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--r-md);

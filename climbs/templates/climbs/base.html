@@ -140,21 +140,33 @@
                             if (r2.ok) {
                                 const log = await r2.json();
                                 const sends = log.sends || [];
-                                const rows = sends.map(s =>
-                                    '<tr><td>' + esc(s.climb) + '</td>' +
+                                // Ten rows fit the card; the rest hide
+                                // behind a toggle (same pattern as the
+                                // leaderboard's top-10 board).
+                                const SEND_LOG_LIMIT = 10;
+                                const sendRow = (s, extra) =>
+                                    '<tr' + (extra ? ' class="extra-send-row" hidden' : '') +
+                                    '><td>' + esc(s.climb) + '</td>' +
                                     '<td>' + esc(s.grade) + '</td>' +
                                     '<td class="num">' + s.tries + '</td>' +
                                     '<td class="num">' + s.points + '</td>' +
-                                    '<td class="muted">' + esc(s.time) + '</td></tr>'
-                                ).join('');
+                                    '<td class="muted">' + esc(s.time) + '</td></tr>';
+                                const firstRows = sends.slice(0, SEND_LOG_LIMIT).map(
+                                    s => sendRow(s, false)).join('');
+                                const restRows = sends.slice(SEND_LOG_LIMIT).map(
+                                    s => sendRow(s, true)).join('');
                                 html += '<h4 class="log-head">Sends on this set (' +
                                     sends.length + ')</h4>' +
                                     (sends.length
                                         ? '<div class="table-wrap"><table class="send-log-table">' +
                                           '<thead><tr><th>Climb</th><th>Grade</th>' +
                                           '<th class="num">Tries</th><th class="num">Points</th>' +
-                                          '<th>Time</th></tr></thead><tbody>' + rows +
-                                          '</tbody></table></div>'
+                                          '<th>Time</th></tr></thead><tbody>' + firstRows + restRows +
+                                          '</tbody></table></div>' +
+                                          (restRows
+                                              ? '<button class="btn btn-sm btn-secondary" id="send-log-toggle" type="button">Show all ' +
+                                                sends.length + ' sends</button>'
+                                              : '')
                                         : '<p class="muted">No sends on this set.</p>');
                                 if (card.dataset.staff) {
                                     html += '<p><a class="btn btn-sm btn-secondary" href="/admin-tools/users/' +
@@ -164,6 +176,26 @@
                         } catch (e2) { /* profile still stands without the log */ }
                     }
                     body.innerHTML = html;
+                    // Long logs open capped at ten: one tap reveals
+                    // the rest in place; staff keep the Full log
+                    // page for the complete history with flags.
+                    const sendToggle = body.querySelector('#send-log-toggle');
+                    if (sendToggle) {
+                        sendToggle.addEventListener('click', () => {
+                            const extra = body.querySelectorAll('.extra-send-row');
+                            if (!extra.length) return;
+                            const showing = extra[0].hasAttribute('hidden');
+                            extra.forEach(r => {
+                                if (showing) r.removeAttribute('hidden');
+                                else r.setAttribute('hidden', '');
+                            });
+                            const total = body.querySelectorAll(
+                                '.send-log-table tbody tr').length;
+                            sendToggle.textContent = showing
+                                ? 'Show top 10'
+                                : 'Show all ' + total + ' sends';
+                        });
+                    }
                 } catch (e) {
                     body.innerHTML = '<p class="muted">Could not load that climber.</p>';
                 }

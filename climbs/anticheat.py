@@ -249,26 +249,35 @@ def _rule_impossible_pace(user, ascents, cfg, peers_ok):
     del peers_ok
     flags = []
     min_gap = cfg.get("minutes_per_attempt", 2.0) * 60
+    # A batch-logged session trips every consecutive pair: report the
+    # whole run as one combined flag, not one flag per pair.
+    rushed = []
     for prev, cur in zip(ascents, ascents[1:]):
         gap = (cur.logged_at - prev.logged_at).total_seconds()
         plausible = max(cur.tries, 1) * min_gap
         if 0 <= gap < plausible:
-            flags.append(_make(
-                user, RULE_IMPOSSIBLE_PACE,
-                "high" if gap < 60 else "medium",
-                25 if gap < 60 else 15,
-                {"summary": (
-                    f"{cur.tries} tries on "
-                    f"{cur.climb.get_wall_display()} logged "
-                    f"{_fmt_gap(gap)} after "
-                    f"{prev.climb.get_wall_display()} "
-                    f"(plausible minimum {_fmt_gap(plausible)})"),
-                 "ascent_id": cur.id, "climb_id": cur.climb_id,
-                 "previous_ascent_id": prev.id,
-                 "gap_seconds": round(gap),
-                 "plausible_seconds": round(plausible),
-                 "logged_at": cur.logged_at.isoformat()},
-                ascent=cur))
+            rushed.append((prev, cur, gap, plausible))
+    if rushed:
+        fastest = min(rushed, key=lambda r: r[2])
+        _, _, fast_gap, fast_plausible = fastest
+        sub_minute = any(gap < 60 for _, _, gap, _ in rushed)
+        latest = rushed[-1][1]
+        flags.append(_make(
+            user, RULE_IMPOSSIBLE_PACE,
+            "high" if sub_minute else "medium",
+            25 if sub_minute else 15,
+            {"summary": (
+                f"{len(rushed) + 1} sends logged faster than plausible "
+                f"({len(rushed)} too-quick pair"
+                f"{'s' if len(rushed) != 1 else ''}; fastest "
+                f"{_fmt_gap(fast_gap)} after the previous send, "
+                f"plausible minimum {_fmt_gap(fast_plausible)})"),
+             "pairs": len(rushed),
+             "fastest_gap_seconds": round(fast_gap),
+             "fastest_plausible_seconds": round(fast_plausible),
+             "ascent_ids": [cur.id for _, cur, _, _ in rushed[:10]],
+             "logged_at": latest.logged_at.isoformat()},
+            ascent=latest))
     count = cfg.get("pace_count", 5)
     window = cfg.get("pace_window_minutes", 30) * 60
     for i, start in enumerate(ascents):
@@ -486,6 +495,9 @@ def _rule_grade_pace_floor(user, ascents, cfg, peers_ok):
     flags = []
     base = cfg.get("grade_pace_base_minutes", 1.5) * 60
     per_grade = cfg.get("grade_pace_per_grade_minutes", 0.5) * 60
+    # Same batch-logging problem as impossible pace: one combined
+    # flag per user, with the fastest pair called out up front.
+    rushed = []
     for prev, cur in zip(ascents, ascents[1:]):
         g = grade_number(cur.climb.grade)
         if g is None:
@@ -493,20 +505,30 @@ def _rule_grade_pace_floor(user, ascents, cfg, peers_ok):
         floor = max(cur.tries, 1) * (base + g * per_grade)
         gap = (cur.logged_at - prev.logged_at).total_seconds()
         if 0 <= gap < floor:
-            flags.append(_make(
-                user, RULE_GRADE_PACE_FLOOR,
-                "high" if gap < 60 else "medium",
-                25 if gap < 60 else 15,
-                {"summary": (
-                    f"{cur.climb.grade} in {cur.tries} tries logged "
-                    f"{_fmt_gap(gap)} after the previous send "
-                    f"(grade floor {_fmt_gap(floor)})"),
-                 "ascent_id": cur.id, "climb_id": cur.climb_id,
-                 "grade": cur.climb.grade, "tries": cur.tries,
-                 "gap_seconds": round(gap),
-                 "floor_seconds": round(floor),
-                 "logged_at": cur.logged_at.isoformat()},
-                ascent=cur))
+            rushed.append((cur, gap, floor))
+    if rushed:
+        fast_cur, fast_gap, fast_floor = min(rushed, key=lambda r: r[1])
+        sub_minute = any(gap < 60 for _, gap, _ in rushed)
+        latest = rushed[-1][0]
+        flags.append(_make(
+            user, RULE_GRADE_PACE_FLOOR,
+            "high" if sub_minute else "medium",
+            25 if sub_minute else 15,
+            {"summary": (
+                f"{len(rushed) + 1} sends under their grade pace floor "
+                f"({len(rushed)} too-quick pair"
+                f"{'s' if len(rushed) != 1 else ''}; fastest "
+                f"{fast_cur.climb.grade} in {fast_cur.tries} tries "
+                f"{_fmt_gap(fast_gap)} after the previous send, "
+                f"floor {_fmt_gap(fast_floor)})"),
+             "pairs": len(rushed),
+             "fastest_grade": fast_cur.climb.grade,
+             "fastest_tries": fast_cur.tries,
+             "fastest_gap_seconds": round(fast_gap),
+             "fastest_floor_seconds": round(fast_floor),
+             "ascent_ids": [cur.id for cur, _, _ in rushed[:10]],
+             "logged_at": latest.logged_at.isoformat()},
+            ascent=latest))
     return flags
 
 

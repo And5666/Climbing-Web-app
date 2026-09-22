@@ -3029,6 +3029,58 @@ class AntiCheatTests(ClimbTestMixin, TestCase):
         self.assertFalse(easy.flags.filter(
             status="open", rule_code="grade_pace_floor").exists())
 
+    def test_pace_flags_combine_batch_into_one(self):
+        # Four sends 30s apart used to raise three impossible-pace
+        # flags and three grade-pace flags (one per pair). A batch
+        # log now reads as one combined flag per rule.
+        import datetime
+
+        from django.utils.timezone import make_aware
+        from climbs.anticheat import refresh_user_flags
+        user = self.make_user("batchlogger")
+        start = datetime.datetime(2026, 3, 2, 12, 0)
+        for i, climb in enumerate(self.make_climbs(4)):
+            ascent = climb.ascents.create(
+                user=user, tries=2,
+                points=calculate_points("V3", 2))
+            Ascent.objects.filter(id=ascent.id).update(
+                logged_at=make_aware(
+                    start + datetime.timedelta(seconds=30 * i)))
+        refresh_user_flags(user)
+        pace = user.flags.filter(
+            status="open", rule_code="impossible_pace")
+        self.assertEqual(pace.count(), 1)
+        self.assertEqual(pace.first().details["pairs"], 3)
+        self.assertIn("4 sends", pace.first().details["summary"])
+        floor = user.flags.filter(
+            status="open", rule_code="grade_pace_floor")
+        self.assertEqual(floor.count(), 1)
+        self.assertEqual(floor.first().details["pairs"], 3)
+        self.assertIsNotNone(floor.first().ascent_id)
+
+    def test_spaced_sends_raise_no_pace_flags(self):
+        # Combining must not invent flags: two sends ten minutes
+        # apart stay clean under both pace rules.
+        import datetime
+
+        from django.utils.timezone import make_aware
+        from climbs.anticheat import refresh_user_flags
+        user = self.make_user("unhurried")
+        climbs = self.make_climbs(2)
+        for i, climb in enumerate(climbs):
+            ascent = climb.ascents.create(
+                user=user, tries=2,
+                points=calculate_points("V3", 2))
+            Ascent.objects.filter(id=ascent.id).update(
+                logged_at=make_aware(
+                    datetime.datetime(2026, 3, 2, 12, 0)
+                    + datetime.timedelta(minutes=10 * i)))
+        refresh_user_flags(user)
+        self.assertFalse(user.flags.filter(
+            status="open", rule_code="impossible_pace").exists())
+        self.assertFalse(user.flags.filter(
+            status="open", rule_code="grade_pace_floor").exists())
+
     def test_flash_drift_flags_sudden_spike(self):
         # Ten project-free grinds then ten flashes in two days: a
         # flash-rate spike paired with a burst. Steady climbers pass.
