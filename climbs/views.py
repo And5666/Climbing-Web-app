@@ -109,13 +109,18 @@ def map_view(request):
 
 def _leaderboard_rows(climb_set):
     """Public board: voided ascents score nothing and hidden users sit
-    out while under review."""
+    out while under review. On the live set, soft-removed climbs
+    (is_active=False) are gone from the wall, so their sends leave
+    the board too; archived sets keep their full history."""
     if climb_set is None:
         return []
+    ascents = Ascent.objects.filter(
+        climb__climb_set=climb_set, is_voided=False,
+        user__leaderboard_hidden=False)
+    if climb_set.is_active:
+        ascents = ascents.filter(climb__is_active=True)
     return list(
-        Ascent.objects.filter(
-            climb__climb_set=climb_set, is_voided=False,
-            user__leaderboard_hidden=False)
+        ascents
         .values("user__username", "user__avatar")
         .annotate(total_points=Sum("points"), climb_count=Count("climb", distinct=True))
         .order_by("-total_points")
@@ -291,6 +296,16 @@ def leaderboard_view(request):
         if is_archived:
             selected.range_start, selected.range_end = _set_date_range(
                 sets, selected)
+        if selected is None:
+            climb_count = 0
+        elif selected.is_active:
+            # Live wall: removed climbs are gone from the map, so the
+            # header total counts live climbs only.
+            climb_count = Climb.objects.filter(
+                climb_set=selected, is_active=True).count()
+        else:
+            climb_count = Climb.objects.filter(
+                climb_set=selected).count()
         walls.append({
             "wall": wall,
             "wall_display": wall_display,
@@ -301,9 +316,7 @@ def leaderboard_view(request):
             "rows": rows,
             "me": me,
             "stats": _set_stats(selected),
-            "climb_count": (Climb.objects.filter(
-                climb_set=selected).count()
-                if selected is not None else 0),
+            "climb_count": climb_count,
         })
     return render(request, "climbs/leaderboard.html", {"walls": walls})
 
@@ -722,9 +735,14 @@ def board_admin_view(request):
     wall, sets, active, selected = _admin_selection(request)
     board = []
     if selected is not None:
+        board_ascents = Ascent.objects.filter(
+            climb__climb_set=selected, is_voided=False)
+        if selected.is_active:
+            # Match the public board: removed climbs leave the review
+            # totals too while the set is live.
+            board_ascents = board_ascents.filter(climb__is_active=True)
         rows = list(
-            Ascent.objects.filter(
-                climb__climb_set=selected, is_voided=False)
+            board_ascents
             .values("user__username")
             .annotate(sends=Count("id"), points=Sum("points"))
             .order_by("-points"))
@@ -799,8 +817,13 @@ def board_admin_view(request):
         board = rows
     total_sends = sum(r["sends"] for r in board)
     open_flag_count = sum(len(r["shown_open"]) for r in board)
-    climb_count = (Climb.objects.filter(climb_set=selected).count()
-                   if selected is not None else 0)
+    if selected is None:
+        climb_count = 0
+    elif selected.is_active:
+        climb_count = Climb.objects.filter(
+            climb_set=selected, is_active=True).count()
+    else:
+        climb_count = Climb.objects.filter(climb_set=selected).count()
     return render(request, "climbs/board_admin.html", {
         "admin_tab": "boards",
         "walls": [{"wall": w, "display": d} for w, d in WALL_CHOICES],

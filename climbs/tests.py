@@ -2424,7 +2424,28 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse("climbs:leaderboard"))
         self.assertContains(response, "3 climbs")
-        self.assertContains(response, "1 of 3 sends")
+        self.assertContains(response, "1 of 3 climbs")
+
+    def test_leaderboard_excludes_removed_climbs(self):
+        # Soft-removed climbs (is_active=False) are gone from the wall,
+        # so the live board must not count them — neither in the set
+        # total nor in anyone's sends.
+        user = self.make_user("removedcounter")
+        climbs = [self.make_climb(name=n) for n in ("One", "Two", "Three")]
+        for climb in climbs[:2]:
+            climb.ascents.create(
+                user=user, tries=1,
+                points=calculate_points("V4", 1))
+        gone = climbs[1]
+        gone.is_active = False
+        gone.save(update_fields=["is_active"])
+        self.client.force_login(user)
+        response = self.client.get(reverse("climbs:leaderboard"))
+        walls = {w["wall"]: w for w in response.context["walls"]}
+        self.assertEqual(walls["main"]["climb_count"], 2)
+        self.assertEqual(walls["main"]["me"]["climbs"], 1)
+        self.assertContains(response, "1 of 2 climbs")
+        self.assertNotContains(response, "1 of 2 sends")
 
     def test_flag_numbers_explain_themselves(self):
         # The badge total and each flag's weight are labelled: the

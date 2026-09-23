@@ -3,7 +3,7 @@
 
 {% block content %}
     {% if has_sets %}<details id="set-switcher">
-        <summary><span class="set-tab-text">Sets</span></summary>
+        <summary><span class="set-tab-text">Filters</span></summary>
         <div class="set-panel">
             <p class="set-current">{% for w in walls %}{{ w.wall_display }}: {% if w.selected %}{{ w.selected.label }}{% else %}—{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
             <form method="get" action="{% url 'climbs:map' %}">

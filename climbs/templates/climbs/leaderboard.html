@@ -17,7 +17,7 @@
                     </form>
                 {% endif %}
                 {% if wall.me %}
-                    <p class="me-line"><span class="row-user">{% if wall.me.avatar %}<img src="{% get_media_prefix %}{{ wall.me.avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>{% endif %}You: #{{ wall.me.rank }} of {{ wall.me.of }} · {{ wall.me.points }} pts · {{ wall.me.climbs }} of {{ wall.climb_count }} sends</span></p>
+                    <p class="me-line"><span class="row-user">{% if wall.me.avatar %}<img src="{% get_media_prefix %}{{ wall.me.avatar }}" alt="" class="avatar-xs">{% else %}<span class="avatar-xs avatar-fallback" aria-hidden="true">{{ user.username|first|upper }}</span>{% endif %}You: #{{ wall.me.rank }} of {{ wall.me.of }} · {{ wall.me.points }} pts · {{ wall.me.climbs }} of {{ wall.climb_count }} climbs</span></p>
                 {% elif user.is_authenticated %}
                     <p class="muted">You're unranked here — log a send to join.</p>
                 {% endif %}
