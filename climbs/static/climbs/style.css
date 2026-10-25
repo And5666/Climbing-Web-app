@@ -3442,3 +3442,124 @@ button.user-chip:hover {
     color: var(--muted);
     z-index: 150;
 }
+
+/* --- PWA install nudge: a small bottom banner on normal pages.
+   Same surface/border/buttons as the rest of the site. */
+.install-nudge {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 110;
+    margin: 0 auto;
+    width: min(560px, 100vw);
+    background: var(--surface);
+    border-top: 2px solid var(--border);
+    padding: 0.8rem 1rem calc(0.8rem + env(safe-area-inset-bottom, 0px));
+}
+
+.install-nudge-text {
+    margin: 0 0 0.6rem;
+}
+
+.install-nudge-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.install-nudge-ios {
+    margin: 0.6rem 0 0;
+}
+
+/* --- Leaderboard share dialog: same centred scrim+box pattern as
+   the climber card (#user-card). */
+#share-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+#share-sheet[hidden] {
+    display: none;
+}
+
+#share-sheet .share-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+#share-sheet .share-box {
+    position: relative;
+    width: min(360px, 92vw);
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 1.1rem 1.2rem;
+}
+
+#share-sheet .share-x {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.3rem;
+    cursor: pointer;
+}
+
+#share-sheet .share-box h3 {
+    margin: 0 2rem 0.6rem 0;
+}
+
+#share-sheet .share-qr {
+    text-align: center;
+}
+
+#share-qr {
+    width: min(240px, 70vw);
+    height: auto;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 8px;
+}
+
+#share-sheet .share-fallback {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    justify-content: center;
+    margin: 0.7rem 0 0.4rem;
+}
+
+#share-sheet .share-url-label {
+    display: block;
+    text-align: left;
+    color: var(--muted);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0.4rem 0 0.25rem;
+}
+
+#share-url {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.8rem;
+}

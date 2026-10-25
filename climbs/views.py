@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
 from django.db import IntegrityError
 from django.db.models import Avg, Count, Sum
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse_lazy
 from django.utils.timezone import now
@@ -1298,11 +1298,16 @@ def climb_update_api(request, climb_id):
             data.get("y_percent", climb.y_percent))
         climb.x_percent = data["x_percent"]
         climb.y_percent = data["y_percent"]
+    previous_wall = climb.wall
     for field in ("name", "grade", "tag", "colour", "wall",
                   "is_active"):
         if field in data:
             setattr(climb, field, data[field])
-    if "wall" in data:
+    if "wall" in data and data["wall"] != previous_wall:
+        # A wall move re-homes the climb onto the new wall's live
+        # set. Any other edit (grade, tag, colour, name, position)
+        # leaves the climb in its current set — especially a draft
+        # set, which the panel always sends `wall` for.
         climb.climb_set = _active_set_for(data["wall"])
     climb.save()
     return JsonResponse({"status": "ok"})
@@ -1397,6 +1402,95 @@ def news_update_api(request, post_id):
 def news_delete_api(request, post_id):
     NewsPost.objects.filter(id=post_id).delete()
     return JsonResponse({"status": "deleted"})
+
+
+def manifest_view(request):
+    """Web app manifest: installable on iPhone and Android. Icon
+    files live under static (hashed in production, so resolve them
+    through the staticfiles storage for cache-busting names)."""
+    from django.contrib.staticfiles.storage import staticfiles_storage
+    icons = [
+        ("climbs/icons/icon-192.png", "192x192", None),
+        ("climbs/icons/icon-512.png", "512x512", None),
+        ("climbs/icons/icon-maskable-512.png", "512x512", "maskable"),
+        ("climbs/icons/apple-touch-icon.png", "180x180", None),
+    ]
+    payload = {
+        "name": "Summit Map",
+        "short_name": "Summit",
+        "start_url": "/",
+        "scope": "/",
+        "display": "standalone",
+        "background_color": "#070c13",
+        "theme_color": "#0e1622",
+        "orientation": "portrait-primary",
+        "icons": [
+            {
+                "src": staticfiles_storage.url(path),
+                "sizes": sizes,
+                "type": "image/png",
+                **({"purpose": purpose} if purpose else {}),
+            }
+            for path, sizes, purpose in icons
+        ],
+    }
+    return JsonResponse(payload, content_type="application/manifest+json")
+
+
+SERVICE_WORKER_JS = """\
+const CACHE = "summit-map-v1";
+// Same-origin static assets only: HTML/navigations are never cached
+// (authenticated pages must stay fresh), and neither are non-GET or
+// cross-origin requests.
+self.addEventListener("install", (event) => {
+  self.skipWaiting();
+});
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches.keys()
+      .then((keys) =>
+        Promise.all(
+          keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))
+        )
+      )
+      .then(() => self.clients.claim())
+  );
+});
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (req.mode === "navigate") return;
+  if (
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname.indexOf("/static/") === 0
+  ) {
+    event.respondWith(
+      caches.open(CACHE).then((cache) =>
+        cache.match(req).then(
+          (hit) =>
+            hit ||
+            fetch(req).then((res) => {
+              if (res && res.ok) cache.put(req, res.clone());
+              return res;
+            })
+        )
+      )
+    );
+  }
+});
+"""
+
+
+def service_worker_view(request):
+    """Service worker source (served by Django, not a static file, so
+    its scope stays `/` and updates are never hashed away)."""
+    response = HttpResponse(
+        SERVICE_WORKER_JS, content_type="application/javascript")
+    response["Service-Worker-Allowed"] = "/"
+    response["Cache-Control"] = "no-cache"
+    return response
 
 
 class SignupView(CreateView):

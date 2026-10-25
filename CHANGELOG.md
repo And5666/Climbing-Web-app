@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Draft-set fix: editing a climb (grade, tag, colour, name,
+  position) no longer moves it onto the wall's live set — the set
+  only changes when the wall itself changes, which re-homes the
+  climb onto the new wall's live set as before.
+- PWA install: web manifest at `/manifest.webmanifest`, generated
+  icons (192/512/512-maskable/180) in brand dark + cyan, and a
+  conservative service worker at `/sw.js` (same-origin static
+  assets only, HTML never cached). Profile gains an "Install app"
+  section (deferred prompt + outcome, iOS Share instructions,
+  installed note), and logged-in users get an occasional
+  dismissible install nudge (14-day server cadence per account,
+  one-per-session client cap, "Don't show again" undoable from the
+  profile).
+- Leaderboard "Share with friends": dialog with a client-side QR
+  code (vendored qrcode matrix, quiet zone, 220px+, download +
+  copy-link fallback) encoding the current wall/set URL, plus a
+  Share-link action (`navigator.share` with clipboard fallback).
+  Works logged out.
+
 - Anti-cheat review stays on one set: ascent-tied flags from other
   sets no longer crowd the board (whole-history patterns stay), and
   repeat findings collapse into one line per rule with a combined

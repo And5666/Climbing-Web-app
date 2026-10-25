@@ -5,8 +5,10 @@ from django.contrib.auth import logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordChangeForm
 from django.db.models import Count, Sum
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils.timezone import now
+from django.views.decorators.http import require_POST
 
 from climbs.models import WALL_CHOICES, ClimbSet, grade_number
 
@@ -214,6 +216,47 @@ def password_change_view(request):
         for errors in form.errors.values():
             messages.error(request, errors[0])
     return redirect("accounts:profile")
+
+
+@login_required
+@require_POST
+def install_prompt_shown_api(request):
+    """Record a nudge appearance ("shown") or a "Maybe later":
+    both stamp last_shown so the banner rests for 14 days. The
+    body is ignored beyond parsing — bad input still returns JSON,
+    never a 500."""
+    try:
+        if request.body:
+            import json
+            json.loads(request.body)
+    except (ValueError, TypeError):
+        pass
+    request.user.install_prompt_last_shown = now()
+    request.user.save(update_fields=["install_prompt_last_shown"])
+    return JsonResponse({"status": "ok"})
+
+
+@login_required
+@require_POST
+def install_prompt_never_api(request):
+    """Permanent opt-out: "Don't show again", saved on the account."""
+    request.user.install_prompt_dismissed = True
+    request.user.save(update_fields=["install_prompt_dismissed"])
+    return JsonResponse({"status": "ok", "dismissed": True})
+
+
+@login_required
+@require_POST
+def install_prompt_reset_api(request):
+    """Undo the opt-out from the profile page: reminders may show
+    again (subject to the usual 14-day cadence, so also clear the
+    last-shown stamp)."""
+    request.user.install_prompt_dismissed = False
+    request.user.install_prompt_last_shown = None
+    request.user.save(
+        update_fields=["install_prompt_dismissed",
+                       "install_prompt_last_shown"])
+    return JsonResponse({"status": "ok", "dismissed": False})
 
 
 @login_required

@@ -22,6 +22,14 @@
         } catch (e) { /* private mode: stay on modern */ }
     </script>
     <link rel="stylesheet" href="{% static 'climbs/style.css' %}">
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#0e1622">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Summit">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="{% static 'climbs/icons/apple-touch-icon.png' %}">
+    <link rel="icon" type="image/png" sizes="192x192" href="{% static 'climbs/icons/icon-192.png' %}">
 </head>
 <body>
     <div class="bg-fixed"></div>
@@ -241,6 +249,150 @@
                 });
                 wrap.append(btn);
             });
+        })();
+    </script>
+
+    {% if user.is_authenticated %}
+        {{ install_nudge_show|json_script:"install-nudge-state" }}
+        <div id="install-nudge" class="install-nudge" hidden>
+            <p class="install-nudge-text"><strong>Install Summit Map?</strong> <span class="muted">A home-screen shortcut, full-screen, works on weak signal.</span></p>
+            <div class="install-nudge-actions">
+                <button class="btn btn-sm" id="install-nudge-go" type="button">Install</button>
+                <button class="btn btn-sm btn-secondary" id="install-nudge-later" type="button">Maybe later</button>
+                <button class="btn btn-sm btn-secondary" id="install-nudge-never" type="button">Don't show again</button>
+            </div>
+            <p class="muted install-nudge-ios" id="install-nudge-ios" hidden>On iPhone: tap Share, then Add to Home Screen.</p>
+        </div>
+    {% endif %}
+
+    <script>
+        // Shared PWA install plumbing: the profile button and the
+        // occasional nudge banner both use the deferred prompt captured
+        // here. Helpers live on window.summitInstall.
+        (function () {
+            function isStandalone() {
+                if (window.navigator.standalone) return true;
+                if (window.matchMedia) {
+                    try {
+                        return matchMedia('(display-mode: standalone)').matches;
+                    } catch (e) { return false; }
+                }
+                return false;
+            }
+            function isIOS() {
+                return /iphone|ipad|ipod/i.test(navigator.userAgent || '');
+            }
+            function getCookie(name) {
+                const match = document.cookie.match(
+                    new RegExp('(^| )' + name + '=([^;]+)'));
+                return match ? match[2] : null;
+            }
+            async function record(url) {
+                try {
+                    await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': getCookie('csrftoken'),
+                        },
+                        body: JSON.stringify({}),
+                    });
+                } catch (e) { /* offline: the server gate retries later */ }
+            }
+            async function installNow() {
+                // Shows the deferred install prompt. Returns the
+                // userChoice outcome ("accepted"/"dismissed"/"unknown")
+                // or null when no prompt was available to show.
+                const deferred = window.deferredInstallPrompt;
+                if (!deferred) return null;
+                deferred.prompt();
+                let outcome = 'unknown';
+                try {
+                    const choice = await deferred.userChoice;
+                    if (choice && choice.outcome) outcome = choice.outcome;
+                } catch (e) { /* outcome unknown, still counts */ }
+                window.deferredInstallPrompt = null;
+                return outcome;
+            }
+            window.summitInstall = {
+                isStandalone, isIOS, record, installNow,
+                deferred: () => window.deferredInstallPrompt || null,
+            };
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                window.deferredInstallPrompt = e;
+                document.dispatchEvent(
+                    new CustomEvent('summit:bip'));
+            });
+            window.addEventListener('appinstalled', () => {
+                window.deferredInstallPrompt = null;
+                const nudge = document.getElementById('install-nudge');
+                if (nudge) nudge.hidden = true;
+            });
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                        .catch(() => {});
+                });
+            }
+            // Occasional nudge: authenticated only (the banner only
+            // renders logged in), never standalone, never on admin
+            // tools or the full-screen map, at most once per session,
+            // and only when the server says the account is due.
+            function maybeNudge() {
+                const state = document.getElementById('install-nudge-state');
+                const nudge = document.getElementById('install-nudge');
+                if (!state || !nudge) return;
+                let due = false;
+                try {
+                    due = JSON.parse(state.textContent);
+                } catch (e) { due = false; }
+                if (!due || isStandalone()) return;
+                const path = window.location.pathname;
+                if (path === '/' || path.indexOf('/admin-tools/') === 0 ||
+                        path.indexOf('/admin/') === 0) return;
+                try {
+                    if (sessionStorage.getItem('summit-install-nudge')) return;
+                } catch (e) { /* private mode: fall through once */ }
+                window.setTimeout(() => {
+                    if (isStandalone()) return;
+                    nudge.hidden = false;
+                    try {
+                        sessionStorage.setItem('summit-install-nudge', '1');
+                    } catch (e) { /* private mode */ }
+                    record('/accounts/install-prompt/shown/');
+                    const hide = () => { nudge.hidden = true; };
+                    document.getElementById('install-nudge-go')
+                        .addEventListener('click', async () => {
+                            const shown = await installNow();
+                            if (!shown) {
+                                const help = document.getElementById(
+                                    'install-nudge-ios');
+                                help.hidden = false;
+                                help.textContent = isIOS()
+                                    ? 'On iPhone: tap Share, then Add to Home Screen.'
+                                    : 'Install it from your browser menu: Look for "Install app" or "Add to Home Screen".';
+                            } else {
+                                hide();
+                            }
+                        }, { once: true });
+                    document.getElementById('install-nudge-later')
+                        .addEventListener('click', () => {
+                            record('/accounts/install-prompt/shown/');
+                            hide();
+                        }, { once: true });
+                    document.getElementById('install-nudge-never')
+                        .addEventListener('click', () => {
+                            record('/accounts/install-prompt/never/');
+                            hide();
+                        }, { once: true });
+                }, 4000);
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', maybeNudge);
+            } else {
+                maybeNudge();
+            }
         })();
     </script>
 

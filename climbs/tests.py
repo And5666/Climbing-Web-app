@@ -3431,3 +3431,178 @@ class NewsTests(ClimbTestMixin, TestCase):
         self.assertContains(response, 'id="news-publish"')
         self.assertContains(response, "data-edit-post")
         self.assertContains(response, "data-del-post")
+
+
+class DraftSetEditTests(ClimbTestMixin, TestCase):
+    def make_sets(self):
+        active = ClimbSet.objects.create(
+            wall="main", label="Live set", is_active=True)
+        draft = ClimbSet.objects.create(
+            wall="main", label="Draft set", is_active=False)
+        return active, draft
+
+    def panel_payload(self, **overrides):
+        payload = {
+            "name": "Drafty", "grade": "V5", "tag": "blue",
+            "colour": "blue", "wall": "main", "is_active": True,
+            "x_percent": 30.0, "y_percent": 40.0,
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_grade_edit_keeps_climb_in_draft_set(self):
+        # Regression: editing a climb in a not-yet-current set (the
+        # admin panel always posts `wall`) must not move it onto the
+        # wall's live set.
+        staff = self.make_user("draftsetter", staff=True)
+        self.client.force_login(staff)
+        active, draft = self.make_sets()
+        climb = Climb.objects.create(
+            name="Drafty", grade="V4", tag="blue", colour="blue",
+            wall="main", climb_set=draft, x_percent=30.0, y_percent=40.0)
+        before = Climb.objects.filter(climb_set=draft).count()
+        response = self.client.post(
+            reverse("climbs:climb-update", args=[climb.id]),
+            json.dumps(self.panel_payload()),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        climb.refresh_from_db()
+        self.assertTrue(Climb.objects.filter(id=climb.id).exists())
+        self.assertEqual(climb.climb_set_id, draft.id)
+        self.assertEqual(climb.grade, "V5")
+        self.assertEqual(
+            Climb.objects.filter(climb_set=draft).count(), before)
+        self.assertEqual(
+            Climb.objects.filter(climb_set=active).count(), 0)
+
+    def test_grade_edit_keeps_climb_in_active_set(self):
+        staff = self.make_user("activesetter", staff=True)
+        self.client.force_login(staff)
+        active, _draft = self.make_sets()
+        climb = Climb.objects.create(
+            name="Live", grade="V4", tag="blue", colour="blue",
+            wall="main", climb_set=active, x_percent=30.0, y_percent=40.0)
+        response = self.client.post(
+            reverse("climbs:climb-update", args=[climb.id]),
+            json.dumps(self.panel_payload(name="Live")),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        climb.refresh_from_db()
+        self.assertEqual(climb.climb_set_id, active.id)
+        self.assertEqual(climb.grade, "V5")
+
+    def test_changing_wall_moves_climb_to_new_wall_active_set(self):
+        # Moving a climb across walls still re-homes it onto the new
+        # wall's live set — that intent is preserved.
+        staff = self.make_user("wallmover", staff=True)
+        self.client.force_login(staff)
+        _active, draft = self.make_sets()
+        cave_live = ClimbSet.objects.create(
+            wall="cave", label="Cave live", is_active=True)
+        climb = Climb.objects.create(
+            name="Mover", grade="V4", tag="blue", colour="blue",
+            wall="main", climb_set=draft, x_percent=30.0, y_percent=40.0)
+        response = self.client.post(
+            reverse("climbs:climb-update", args=[climb.id]),
+            json.dumps(self.panel_payload(wall="cave")),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        climb.refresh_from_db()
+        self.assertEqual(climb.wall, "cave")
+        self.assertEqual(climb.climb_set_id, cave_live.id)
+
+    def test_create_into_draft_set_lands_in_that_set(self):
+        # The panel names the set on create: the climb must land in
+        # the draft set and show on that set's admin wall.
+        staff = self.make_user("draftcreator", staff=True)
+        self.client.force_login(staff)
+        _active, draft = self.make_sets()
+        response = self.client.post(
+            reverse("climbs:climb-create"),
+            json.dumps({"name": "New in draft", "grade": "V4",
+                        "tag": "blue", "colour": "blue", "wall": "main",
+                        "climb_set": draft.id,
+                        "x_percent": 30.0, "y_percent": 40.0}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        climb = Climb.objects.get(id=response.json()["id"])
+        self.assertEqual(climb.climb_set_id, draft.id)
+        admin = self.client.get(
+            reverse("climbs:climb-admin")
+            + f"?wall=main&set={draft.id}")
+        self.assertContains(admin, f'data-id="{climb.id}"')
+
+
+class PwaTests(TestCase):
+    def test_manifest_has_required_keys_and_icons(self):
+        response = self.client.get(reverse("climbs:manifest"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/manifest+json",
+                      response["Content-Type"])
+        data = response.json()
+        self.assertEqual(data["name"], "Summit Map")
+        self.assertEqual(data["short_name"], "Summit")
+        self.assertEqual(data["start_url"], "/")
+        self.assertEqual(data["scope"], "/")
+        self.assertEqual(data["display"], "standalone")
+        self.assertEqual(data["background_color"], "#070c13")
+        self.assertEqual(data["theme_color"], "#0e1622")
+        self.assertEqual(data["orientation"], "portrait-primary")
+        sizes = {icon["sizes"]: icon for icon in data["icons"]}
+        self.assertIn("192x192", sizes)
+        self.assertIn("512x512", sizes)
+        self.assertTrue(any(icon.get("purpose") == "maskable"
+                            for icon in data["icons"]))
+        for icon in data["icons"]:
+            self.assertIn("climbs/icons/", icon["src"])
+        # Every icon path resolves to a real static file.
+        for name in ("icon-192.png", "icon-512.png",
+                     "icon-maskable-512.png", "apple-touch-icon.png"):
+            self.assertTrue(
+                finders.find(f"climbs/icons/{name}"), name)
+
+    def test_service_worker_headers_and_safety(self):
+        response = self.client.get(reverse("climbs:sw"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("application/javascript", response["Content-Type"])
+        self.assertEqual(response["Service-Worker-Allowed"], "/")
+        self.assertIn("no-cache", response["Cache-Control"])
+        body = response.content.decode()
+        # Fetch handler + versioned cache + prompt updates...
+        self.assertIn("addEventListener(\"fetch\"", body)
+        self.assertIn("skipWaiting", body)
+        self.assertIn("clients.claim", body)
+        self.assertIn("summit-map-", body)
+        # ...but HTML/navigations are never cached.
+        self.assertIn("navigate", body)
+        self.assertIn("/static/", body)
+
+    def test_base_template_links_manifest_and_registers_sw(self):
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(response, "/manifest.webmanifest")
+        self.assertContains(response, "/sw.js")
+        self.assertContains(response, 'name="theme-color"')
+        self.assertContains(response, "apple-touch-icon")
+        self.assertContains(response, "apple-mobile-web-app-capable")
+
+
+class LeaderboardShareTests(ClimbTestMixin, TestCase):
+    def test_share_section_renders_logged_out(self):
+        # The share card and dialog ship for everyone, including
+        # logged-out visitors.
+        response = self.client.get(reverse("climbs:leaderboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Share with friends")
+        self.assertContains(response, 'id="share-open"')
+        self.assertContains(response, 'role="dialog"')
+        self.assertContains(response, 'aria-modal="true"')
+        self.assertContains(response, 'id="share-qr"')
+        self.assertContains(response, "vendor/qrcode.js")
+        self.assertContains(response, "Copy link")
+        self.assertContains(response, "Download")
+
+    def test_share_section_renders_logged_in(self):
+        user = self.make_user("sharer")
+        self.client.force_login(user)
+        response = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(response, "Share with friends")

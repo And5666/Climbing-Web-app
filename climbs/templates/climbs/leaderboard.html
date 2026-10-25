@@ -123,10 +123,153 @@
             {% endif %}
         {% endfor %}
     </details>
+
+    <section class="board share-card">
+        <h3>Share with friends</h3>
+        <p class="muted">Invite others to this leaderboard — the link keeps the wall and set you are viewing.</p>
+        <p><button class="btn btn-md" id="share-open" type="button">Share with friends</button></p>
+    </section>
+</div>
+
+<div id="share-sheet" hidden>
+    <div class="share-scrim" data-close-share></div>
+    <section class="share-box" role="dialog" aria-modal="true" aria-labelledby="share-title">
+        <button class="share-x" data-close-share aria-label="Close">×</button>
+        <h3 id="share-title">Share this leaderboard</h3>
+        <div class="share-qr">
+            <canvas id="share-qr" role="img" aria-label="QR code for this leaderboard"></canvas>
+            <p class="share-fallback">
+                <a id="share-download" href="#" download="summit-leaderboard-qr.png">Download QR</a>
+                <button class="btn btn-sm btn-secondary" id="share-copy" type="button">Copy link</button>
+            </p>
+            <p class="muted" id="share-copied" role="status" hidden>Link copied.</p>
+            <label class="share-url-label" for="share-url">Leaderboard link</label>
+            <input id="share-url" type="text" readonly>
+        </div>
+        <p><button class="btn btn-md" id="share-native" type="button">Share link</button></p>
+        <p class="muted" id="share-note" role="status" hidden></p>
+    </section>
 </div>
 {% endblock %}
 
 {% block scripts %}
+<script src="{% static 'climbs/vendor/qrcode.js' %}"></script>
+<script>
+    // Share with friends: a dialog with a QR code (drawn client-side
+    // from the vendored qrcode matrix) and a share-link action. Works
+    // logged out; no new dependencies.
+    (function () {
+        const openBtn = document.getElementById('share-open');
+        const sheet = document.getElementById('share-sheet');
+        if (!openBtn || !sheet) return;
+        const canvas = document.getElementById('share-qr');
+        const urlInput = document.getElementById('share-url');
+        const copied = document.getElementById('share-copied');
+        const note = document.getElementById('share-note');
+        const download = document.getElementById('share-download');
+
+        function pageUrl() {
+            // Absolute current leaderboard URL, keeping the viewed
+            // wall/set query string when one is selected.
+            return window.location.href;
+        }
+        function drawQr(url) {
+            // Quiet zone of 4 modules on a light background, dark
+            // modules on top; at least 220px across so phones scan it.
+            const qr = qrcode(0, 'M');
+            qr.addData(url);
+            qr.make();
+            const count = qr.getModuleCount();
+            const quiet = 4;
+            const cell = Math.max(2, Math.ceil(220 / (count + quiet * 2)));
+            const size = (count + quiet * 2) * cell;
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+            ctx.fillStyle = '#0b1520';
+            for (let r = 0; r < count; r += 1) {
+                for (let c = 0; c < count; c += 1) {
+                    if (qr.isDark(r, c)) {
+                        ctx.fillRect(
+                            (c + quiet) * cell, (r + quiet) * cell,
+                            cell, cell);
+                    }
+                }
+            }
+            try {
+                download.href = canvas.toDataURL('image/png');
+            } catch (e) { download.removeAttribute('href'); }
+        }
+        function openSheet() {
+            const url = pageUrl();
+            urlInput.value = url;
+            copied.hidden = true;
+            note.hidden = true;
+            try {
+                drawQr(url);
+            } catch (e) {
+                // QR failed (vendored lib missing?): the copy/download
+                // fallbacks and the plain link below still work.
+            }
+            sheet.hidden = false;
+            openBtn.setAttribute('aria-expanded', 'true');
+            const native = document.getElementById('share-native');
+            if (native) native.focus();
+        }
+        function closeSheet() {
+            sheet.hidden = true;
+            openBtn.setAttribute('aria-expanded', 'false');
+            openBtn.focus();
+        }
+        openBtn.addEventListener('click', openSheet);
+        sheet.addEventListener('click', (e) => {
+            if (e.target.closest('[data-close-share]')) closeSheet();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !sheet.hidden) closeSheet();
+        });
+        document.getElementById('share-copy').addEventListener('click', async () => {
+            const url = pageUrl();
+            try {
+                await navigator.clipboard.writeText(url);
+                copied.hidden = false;
+                note.hidden = true;
+            } catch (e) {
+                // Clipboard blocked: select the plain link instead.
+                urlInput.focus();
+                urlInput.select();
+                note.textContent = 'Copy blocked — the link is selected above, copy it manually.';
+                note.hidden = false;
+            }
+        });
+        urlInput.addEventListener('focus', () => urlInput.select());
+        document.getElementById('share-native').addEventListener('click', async () => {
+            const url = pageUrl();
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: 'Summit Map leaderboard',
+                        text: 'Check the Summit Map leaderboard:',
+                        url: url,
+                    });
+                } catch (e) { /* dismissed: stay quiet */ }
+                return;
+            }
+            try {
+                await navigator.clipboard.writeText(url);
+                copied.hidden = false;
+                note.hidden = true;
+            } catch (e) {
+                urlInput.focus();
+                urlInput.select();
+                note.textContent = 'No share sheet here — the link is selected above, copy it manually.';
+                note.hidden = false;
+            }
+        });
+    })();
+</script>
 <script>
     // Top 10 by default; one tap reveals the full board (already rendered,
     // so no extra request — fast on weak phones).

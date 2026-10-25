@@ -5,6 +5,8 @@ app_name = "climbs"
 
 urlpatterns = [
     path("", views.map_view, name="map"),
+    path("manifest.webmanifest", views.manifest_view, name="manifest"),
+    path("sw.js", views.service_worker_view, name="sw"),
     path("leaderboard/", views.leaderboard_view, name="leaderboard"),
     path("news/", views.news_view, name="news"),
     path("news/create/", views.news_create_api, name="news-create"),

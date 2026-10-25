@@ -514,3 +514,77 @@ class PasswordPeekTests(TestCase):
             css = f.read()
         self.assertIn(".pw-wrap", css)
         self.assertIn(".pw-peek", css)
+
+
+class InstallPromptApiTests(TestCase):
+    def make_user(self, username, password="test-pass-123"):
+        return User.objects.create_user(
+            username=username, email=f"{username}@example.com",
+            password=password)
+
+    def test_anonymous_is_redirected(self):
+        for url in (reverse("accounts:install-prompt-shown"),
+                    reverse("accounts:install-prompt-never"),
+                    reverse("accounts:install-prompt-reset")):
+            response = self.client.post(url, {}, content_type="application/json")
+            self.assertIn(response.status_code, (302, 403))
+
+    def test_shown_stamps_last_shown(self):
+        user = self.make_user("nudged")
+        self.assertIsNone(user.install_prompt_last_shown)
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse("accounts:install-prompt-shown"), {},
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertIsNotNone(user.install_prompt_last_shown)
+        self.assertFalse(user.install_prompt_dismissed)
+
+    def test_never_sets_dismissed(self):
+        user = self.make_user("optout")
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse("accounts:install-prompt-never"), {},
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertTrue(user.install_prompt_dismissed)
+
+    def test_reset_clears_dismissed(self):
+        from django.utils.timezone import now
+        user = self.make_user("backon")
+        user.install_prompt_dismissed = True
+        user.install_prompt_last_shown = now()
+        user.save()
+        self.client.force_login(user)
+        response = self.client.post(
+            reverse("accounts:install-prompt-reset"), {},
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        user.refresh_from_db()
+        self.assertFalse(user.install_prompt_dismissed)
+        self.assertIsNone(user.install_prompt_last_shown)
+
+    def test_bad_input_never_500s(self):
+        user = self.make_user("garbage")
+        self.client.force_login(user)
+        for url in (reverse("accounts:install-prompt-shown"),
+                    reverse("accounts:install-prompt-never"),
+                    reverse("accounts:install-prompt-reset")):
+            response = self.client.post(
+                url, "{not json", content_type="application/json")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Content-Type"], "application/json")
+
+    def test_profile_has_install_section_and_reset_when_dismissed(self):
+        user = self.make_user("installer")
+        self.client.force_login(user)
+        response = self.client.get(reverse("accounts:profile"))
+        self.assertContains(response, "Install app")
+        self.assertContains(response, 'id="install-app-btn"')
+        self.assertNotContains(response, 'id="install-remind-again"')
+        user.install_prompt_dismissed = True
+        user.save()
+        again = self.client.get(reverse("accounts:profile"))
+        self.assertContains(again, "Show install reminders again")

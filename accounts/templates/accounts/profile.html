@@ -56,6 +56,23 @@
         </div>
 
         <div class="sheet-section">
+            <h3>Install app</h3>
+            <p class="muted" id="install-status">Add Summit Map to your home screen for a full-screen shortcut.</p>
+            <p><button class="btn btn-md" id="install-app-btn" type="button" hidden>Install app</button></p>
+            <p class="muted" id="install-done-note" hidden>Installed — open it from your home screen.</p>
+            <div id="install-ios-help" hidden>
+                <p class="muted">On iPhone there is no install button: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
+            </div>
+            <div id="install-desktop-help" hidden>
+                <p class="muted">Install it from your browser menu: look for “Install app” or “Add to Home Screen”.</p>
+            </div>
+            <p class="muted" id="install-outcome" role="status" hidden></p>
+            {% if user.install_prompt_dismissed %}
+                <p><button class="btn btn-sm btn-secondary" id="install-remind-again" type="button">Show install reminders again</button></p>
+            {% endif %}
+        </div>
+
+        <div class="sheet-section">
             <h3>Profile</h3>
             <form method="post" action="{% url 'accounts:profile-update' %}" enctype="multipart/form-data" id="profile-form">
                 {% csrf_token %}
@@ -115,6 +132,56 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+    // Install app: the button uses the deferred beforeinstallprompt
+    // captured in base.html. Installed already: a quiet note instead.
+    // iOS (no prompt event): inline Share-instructions. Desktop with
+    // no prompt: honest browser-menu instructions. No dead buttons.
+    (function () {
+        const btn = document.getElementById('install-app-btn');
+        const done = document.getElementById('install-done-note');
+        const iosHelp = document.getElementById('install-ios-help');
+        const deskHelp = document.getElementById('install-desktop-help');
+        const outcome = document.getElementById('install-outcome');
+        if (!btn || !window.summitInstall) return;
+        const api = window.summitInstall;
+        function say(text) {
+            outcome.textContent = text;
+            outcome.hidden = false;
+        }
+        if (api.isStandalone()) {
+            btn.hidden = true;
+            done.hidden = false;
+            return;
+        }
+        btn.hidden = false;
+        async function activate() {
+            const result = await api.installNow();
+            if (result === 'accepted') {
+                say('Installed — open it from your home screen.');
+            } else if (result === 'dismissed') {
+                say('No problem — the button stays here if you change your mind.');
+            } else if (result) {
+                say('Install prompt opened — check your screen to finish.');
+            } else if (api.isIOS()) {
+                iosHelp.hidden = false;
+            } else {
+                deskHelp.hidden = false;
+            }
+        }
+        btn.addEventListener('click', activate);
+        // If the prompt arrives late, keep the same button live: it
+        // just works, since activate() reads the deferred prompt.
+        const again = document.getElementById('install-remind-again');
+        if (again) {
+            again.addEventListener('click', async () => {
+                await api.record('/accounts/install-prompt/reset/');
+                again.closest('p').hidden = true;
+                say('Install reminders are back on.');
+            });
+        }
+    })();
+</script>
 <script>
     // Theme switch: attribute on <html> + localStorage, no reload needed.
     document.querySelectorAll('[data-theme-set]').forEach((btn) => {
