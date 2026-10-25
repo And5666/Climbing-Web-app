@@ -3542,6 +3542,7 @@ class PwaTests(TestCase):
         data = response.json()
         self.assertEqual(data["name"], "Summit Map")
         self.assertEqual(data["short_name"], "Summit")
+        self.assertEqual(data["id"], "/")
         self.assertEqual(data["start_url"], "/")
         self.assertEqual(data["scope"], "/")
         self.assertEqual(data["display"], "standalone")
@@ -3551,6 +3552,13 @@ class PwaTests(TestCase):
         sizes = {icon["sizes"]: icon for icon in data["icons"]}
         self.assertIn("192x192", sizes)
         self.assertIn("512x512", sizes)
+        # Installability needs 192+512 px icons with purpose "any"
+        # (explicit, not just the spec default) plus a maskable icon
+        # for adaptive launchers.
+        self.assertEqual(sizes["192x192"].get("purpose"), "any")
+        self.assertTrue(any(icon.get("sizes") == "512x512"
+                            and icon.get("purpose") == "any"
+                            for icon in data["icons"]))
         self.assertTrue(any(icon.get("purpose") == "maskable"
                             for icon in data["icons"]))
         for icon in data["icons"]:
@@ -3581,6 +3589,7 @@ class PwaTests(TestCase):
         response = self.client.get(reverse("climbs:map"))
         self.assertContains(response, "/manifest.webmanifest")
         self.assertContains(response, "/sw.js")
+        self.assertContains(response, 'class="brand-logo"')
         self.assertContains(response, 'name="theme-color"')
         self.assertContains(response, "apple-touch-icon")
         self.assertContains(response, "apple-mobile-web-app-capable")
@@ -3598,11 +3607,26 @@ class LeaderboardShareTests(ClimbTestMixin, TestCase):
         self.assertContains(response, 'aria-modal="true"')
         self.assertContains(response, 'id="share-qr"')
         self.assertContains(response, "vendor/qrcode.js")
-        self.assertContains(response, "Copy link")
-        self.assertContains(response, "Download")
+        # Link + copy only: no native share button, no QR download.
+        self.assertContains(response, 'id="share-copy"')
+        self.assertContains(response, 'id="share-url"')
+        self.assertNotContains(response, "share-native")
+        self.assertNotContains(response, "share-download")
 
     def test_share_section_renders_logged_in(self):
         user = self.make_user("sharer")
         self.client.force_login(user)
         response = self.client.get(reverse("climbs:leaderboard"))
         self.assertContains(response, "Share with friends")
+
+    def test_share_button_sits_in_title_row_at_top(self):
+        # The share trigger lives next to the page title, above the
+        # boards: visible without scrolling. The old bottom card is gone.
+        response = self.client.get(reverse("climbs:leaderboard"))
+        html = response.content.decode()
+        self.assertNotIn("share-card", html)
+        head = html.index("boards-head")
+        trigger = html.index('id="share-open"')
+        boards = html.index("board-columns")
+        self.assertLess(head, trigger)
+        self.assertLess(trigger, boards)

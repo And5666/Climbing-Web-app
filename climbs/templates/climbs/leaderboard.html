@@ -5,7 +5,10 @@
 
 {% block content %}
 <div class="boards">
-    <h2>Leaderboard</h2>
+    <div class="boards-head">
+        <h2>Leaderboard</h2>
+        <button class="btn btn-sm btn-secondary" id="share-open" type="button" aria-haspopup="dialog">Share with friends</button>
+    </div>
     <div class="board-columns">
         {% for wall in walls %}
             <section class="board">
@@ -124,11 +127,6 @@
         {% endfor %}
     </details>
 
-    <section class="board share-card">
-        <h3>Share with friends</h3>
-        <p class="muted">Invite others to this leaderboard — the link keeps the wall and set you are viewing.</p>
-        <p><button class="btn btn-md" id="share-open" type="button">Share with friends</button></p>
-    </section>
 </div>
 
 <div id="share-sheet" hidden>
@@ -138,15 +136,13 @@
         <h3 id="share-title">Share this leaderboard</h3>
         <div class="share-qr">
             <canvas id="share-qr" role="img" aria-label="QR code for this leaderboard"></canvas>
-            <p class="share-fallback">
-                <a id="share-download" href="#" download="summit-leaderboard-qr.png">Download QR</a>
-                <button class="btn btn-sm btn-secondary" id="share-copy" type="button">Copy link</button>
-            </p>
-            <p class="muted" id="share-copied" role="status" hidden>Link copied.</p>
             <label class="share-url-label" for="share-url">Leaderboard link</label>
-            <input id="share-url" type="text" readonly>
+            <div class="share-url-row">
+                <input id="share-url" type="text" readonly>
+                <button class="btn btn-sm btn-secondary" id="share-copy" type="button">Copy</button>
+            </div>
+            <p class="muted" id="share-copied" role="status" hidden>Link copied.</p>
         </div>
-        <p><button class="btn btn-md" id="share-native" type="button">Share link</button></p>
         <p class="muted" id="share-note" role="status" hidden></p>
     </section>
 </div>
@@ -156,8 +152,8 @@
 <script src="{% static 'climbs/vendor/qrcode.js' %}"></script>
 <script>
     // Share with friends: a dialog with a QR code (drawn client-side
-    // from the vendored qrcode matrix) and a share-link action. Works
-    // logged out; no new dependencies.
+    // from the vendored qrcode matrix) plus the plain link with a copy
+    // button. Works logged out; no new dependencies.
     (function () {
         const openBtn = document.getElementById('share-open');
         const sheet = document.getElementById('share-sheet');
@@ -166,7 +162,7 @@
         const urlInput = document.getElementById('share-url');
         const copied = document.getElementById('share-copied');
         const note = document.getElementById('share-note');
-        const download = document.getElementById('share-download');
+        const copyBtn = document.getElementById('share-copy');
 
         function pageUrl() {
             // Absolute current leaderboard URL, keeping the viewed
@@ -198,9 +194,6 @@
                     }
                 }
             }
-            try {
-                download.href = canvas.toDataURL('image/png');
-            } catch (e) { download.removeAttribute('href'); }
         }
         function openSheet() {
             const url = pageUrl();
@@ -210,13 +203,12 @@
             try {
                 drawQr(url);
             } catch (e) {
-                // QR failed (vendored lib missing?): the copy/download
-                // fallbacks and the plain link below still work.
+                // QR failed (vendored lib missing?): the copy button
+                // and the plain link below still work.
             }
             sheet.hidden = false;
             openBtn.setAttribute('aria-expanded', 'true');
-            const native = document.getElementById('share-native');
-            if (native) native.focus();
+            if (copyBtn) copyBtn.focus();
         }
         function closeSheet() {
             sheet.hidden = true;
@@ -230,7 +222,7 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !sheet.hidden) closeSheet();
         });
-        document.getElementById('share-copy').addEventListener('click', async () => {
+        if (copyBtn) copyBtn.addEventListener('click', async () => {
             const url = pageUrl();
             try {
                 await navigator.clipboard.writeText(url);
@@ -245,29 +237,6 @@
             }
         });
         urlInput.addEventListener('focus', () => urlInput.select());
-        document.getElementById('share-native').addEventListener('click', async () => {
-            const url = pageUrl();
-            if (navigator.share) {
-                try {
-                    await navigator.share({
-                        title: 'Summit Map leaderboard',
-                        text: 'Check the Summit Map leaderboard:',
-                        url: url,
-                    });
-                } catch (e) { /* dismissed: stay quiet */ }
-                return;
-            }
-            try {
-                await navigator.clipboard.writeText(url);
-                copied.hidden = false;
-                note.hidden = true;
-            } catch (e) {
-                urlInput.focus();
-                urlInput.select();
-                note.textContent = 'No share sheet here — the link is selected above, copy it manually.';
-                note.hidden = false;
-            }
-        });
     })();
 </script>
 <script>

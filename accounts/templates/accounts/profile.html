@@ -59,6 +59,7 @@
             <h3>Install app</h3>
             <p class="muted" id="install-status">Add Summit Map to your home screen for a full-screen shortcut.</p>
             <p><button class="btn btn-md" id="install-app-btn" type="button" hidden>Install app</button></p>
+            <p class="muted" id="install-tech" hidden></p>
             <p class="muted" id="install-done-note" hidden>Installed — open it from your home screen.</p>
             <div id="install-ios-help" hidden>
                 <p class="muted">On iPhone there is no install button: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
@@ -137,17 +138,81 @@
     // captured in base.html. Installed already: a quiet note instead.
     // iOS (no prompt event): inline Share-instructions. Desktop with
     // no prompt: honest browser-menu instructions. No dead buttons.
+    // A one-line diagnostic under the button names the current
+    // blocker (http, missing server files, no prompt yet).
     (function () {
         const btn = document.getElementById('install-app-btn');
         const done = document.getElementById('install-done-note');
         const iosHelp = document.getElementById('install-ios-help');
         const deskHelp = document.getElementById('install-desktop-help');
         const outcome = document.getElementById('install-outcome');
+        const tech = document.getElementById('install-tech');
         if (!btn || !window.summitInstall) return;
         const api = window.summitInstall;
         function say(text) {
             outcome.textContent = text;
             outcome.hidden = false;
+        }
+        function techSay(text) {
+            if (!tech) return;
+            tech.textContent = text;
+            tech.hidden = false;
+        }
+        // One-line diagnostics under the button: says WHY the button
+        // will or won't install right now, so a failure reports its
+        // cause instead of silently falling back to instructions.
+        async function paintTech() {
+            if (api.isStandalone()) {
+                btn.hidden = true;
+                if (tech) tech.hidden = true;
+                done.hidden = false;
+                return;
+            }
+            if (!window.isSecureContext) {
+                techSay('Install needs a secure (https) page.');
+                return;
+            }
+            if (!('serviceWorker' in navigator)) {
+                techSay('This browser cannot install apps.');
+                return;
+            }
+            if (api.deferred()) {
+                techSay('Ready — tap Install app.');
+                return;
+            }
+            // No prompt yet: check the server files first, so a stale
+            // or broken deploy reports itself instead of blaming the
+            // browser.
+            try {
+                const m = await fetch('/manifest.webmanifest');
+                if (!m.ok) {
+                    techSay('Install files missing on the server (manifest HTTP ' +
+                        m.status + ').');
+                    return;
+                }
+                const w = await fetch('/sw.js');
+                if (!w.ok) {
+                    techSay('Install files missing on the server (worker HTTP ' +
+                        w.status + ').');
+                    return;
+                }
+            } catch (e) {
+                techSay('Could not reach the server — check your connection.');
+                return;
+            }
+            if (api.isIOS()) {
+                techSay('iPhone has no install button: tap Share, then Add to Home Screen.');
+                return;
+            }
+            let reg = null;
+            try {
+                reg = await navigator.serviceWorker.getRegistration();
+            } catch (e) { reg = null; }
+            if (!reg) {
+                techSay('Service worker not running yet — reload the page.');
+                return;
+            }
+            techSay('Waiting for the browser install signal — reload if this never changes.');
         }
         if (api.isStandalone()) {
             btn.hidden = true;
@@ -155,9 +220,17 @@
             return;
         }
         btn.hidden = false;
+        paintTech();
+        document.addEventListener('summit:bip', paintTech);
+        window.addEventListener('appinstalled', paintTech);
+        window.addEventListener('load', paintTech);
+        if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+            navigator.serviceWorker.ready.then(paintTech, () => {});
+        }
         async function activate() {
             const result = await api.installNow();
             if (result === 'accepted') {
+                if (tech) tech.hidden = true;
                 say('Installed — open it from your home screen.');
             } else if (result === 'dismissed') {
                 say('No problem — the button stays here if you change your mind.');

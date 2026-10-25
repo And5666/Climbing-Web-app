@@ -24,6 +24,20 @@
     </section>
 
     <section class="card">
+        <h3>Highlights</h3>
+        {% if highlights %}
+            <div class="profile-stats highlights">
+                <div><span class="stat-num">{{ highlights.flashes }}</span><span class="stat-label">flashes</span></div>
+                <div><span class="stat-num">{{ highlights.avg_tries }}</span><span class="stat-label">avg tries</span></div>
+                <div><span class="stat-num">{{ highlights.hardest_flash }}</span><span class="stat-label">top flash</span></div>
+                <div><span class="stat-num">{{ highlights.fav_grade }}</span><span class="stat-label">favourite</span></div>
+            </div>
+        {% else %}
+            <p class="muted">No sends on this wall yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
         <h3>Progress</h3>
         <form method="get" action="{% url 'accounts:stats' %}" class="stats-controls">
             <label>Graph
@@ -75,6 +89,55 @@
                     </div>
                 {% endfor %}
             </div>
+        {% else %}
+            <p class="muted">No sends on this wall yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h3>Tries</h3>
+        {% if tries_breakdown %}
+            <div class="graph graph-labels-wide">
+                {% for row in tries_breakdown %}
+                    <div class="graph-row{% if not row.sends %} graph-empty{% endif %}">
+                        <span class="graph-grade">{{ row.label }}</span>
+                        <span class="graph-track"><span class="gbar" style="width:{{ row.pct }}%;background:var(--accent)"></span></span>
+                        <span class="graph-count">{{ row.sends }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="muted">No sends on this wall yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h3>Climbing week</h3>
+        {% if weekdays %}
+            <div class="graph graph-labels-wide">
+                {% for day in weekdays %}
+                    <div class="graph-row{% if not day.sends %} graph-empty{% endif %}">
+                        <span class="graph-grade">{{ day.label }}</span>
+                        <span class="graph-track"><span class="gbar" style="width:{{ day.pct }}%;background:var(--accent)"></span></span>
+                        <span class="graph-count">{{ day.sends }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="muted">No sends on this wall yet.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h3>Milestones</h3>
+        {% if milestones %}
+            <ul class="plain rank-list">
+                {% for m in milestones %}
+                    <li><span><span class="grade-pill {{ m.tag_class }}">{{ m.grade }}</span>
+                        {{ m.name }}</span>
+                        <span class="muted">{{ m.date|date:"d/m/Y" }}</span></li>
+                {% endfor %}
+            </ul>
         {% else %}
             <p class="muted">No sends on this wall yet.</p>
         {% endif %}

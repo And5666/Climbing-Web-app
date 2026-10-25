@@ -102,6 +102,102 @@ def _grade_distribution(user, wall):
             for grade in grades]
 
 
+def _stats_highlights(user, wall):
+    """Headline tiles: flashes, average tries, hardest flash and the
+    most-sent grade (ties break to the harder grade). None when the
+    filter matches nothing."""
+    ascents = user.ascents.filter(
+        is_voided=False).select_related("climb")
+    if wall != "all":
+        ascents = ascents.filter(climb__wall=wall)
+    ascents = list(ascents)
+    if not ascents:
+        return None
+    hardest = max(
+        (grade_number(a.climb.grade) or 0
+         for a in ascents if a.tries == 1),
+        default=0)
+    counts = {}
+    for ascent in ascents:
+        grade = ascent.climb.grade
+        counts[grade] = counts.get(grade, 0) + 1
+    fav = max(counts,
+              key=lambda g: (counts[g], grade_number(g) or 0))
+    avg = sum(a.tries for a in ascents) / len(ascents)
+    return {
+        "flashes": sum(1 for a in ascents if a.tries == 1),
+        "avg_tries": f"{avg:.1f}",
+        "hardest_flash": f"V{hardest}" if hardest else "—",
+        "fav_grade": fav,
+    }
+
+
+WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def _stats_weekdays(user, wall):
+    """Sends stacked by weekday, Monday first. Quiet days render as
+    zero bars; empty when the filter matches nothing."""
+    ascents = user.ascents.filter(is_voided=False)
+    if wall != "all":
+        ascents = ascents.filter(climb__wall=wall)
+    counts = [0] * 7
+    for logged_at in ascents.values_list("logged_at", flat=True):
+        counts[logged_at.weekday()] += 1
+    if not any(counts):
+        return []
+    top = max(counts)
+    return [{"label": label, "sends": sends,
+             "pct": round(sends / top * 100)}
+            for label, sends in zip(WEEKDAY_LABELS, counts)]
+
+
+def _stats_tries(user, wall):
+    """Sends bucketed by effort: flashes, quick redpoints, grinds and
+    full projects. Empty when the filter matches nothing."""
+    ascents = user.ascents.filter(is_voided=False)
+    if wall != "all":
+        ascents = ascents.filter(climb__wall=wall)
+    labels = ("Flash", "2–3 tries", "4–9 tries", "10+ tries")
+    counts = [0, 0, 0, 0]
+    for tries in ascents.values_list("tries", flat=True):
+        if tries <= 1:
+            counts[0] += 1
+        elif tries <= 3:
+            counts[1] += 1
+        elif tries <= 9:
+            counts[2] += 1
+        else:
+            counts[3] += 1
+    if not any(counts):
+        return []
+    top = max(counts)
+    return [{"label": label, "sends": sends,
+             "pct": round(sends / top * 100)}
+            for label, sends in zip(labels, counts)]
+
+
+def _stats_milestones(user, wall):
+    """First-ever send at each grade, easiest first."""
+    ascents = user.ascents.filter(
+        is_voided=False).select_related("climb").order_by("logged_at")
+    if wall != "all":
+        ascents = ascents.filter(climb__wall=wall)
+    firsts = {}
+    for ascent in ascents:
+        number = grade_number(ascent.climb.grade)
+        if number is None or number in firsts:
+            continue
+        firsts[number] = ascent
+    return [{
+        "grade": f"V{number}",
+        "tag_class": firsts[number].climb.tag_class,
+        "name": (firsts[number].climb.name
+                 or firsts[number].climb.colour_name),
+        "date": firsts[number].logged_at,
+    } for number in sorted(firsts)]
+
+
 def _wall_ranks(user):
     """Rank/points of one user on each wall's active set."""
     ranks = {}
@@ -160,6 +256,10 @@ def stats_view(request):
             request.user, metric, wall,
             None if span == "all" else int(span)),
         "distribution": _grade_distribution(request.user, wall),
+        "highlights": _stats_highlights(request.user, wall),
+        "weekdays": _stats_weekdays(request.user, wall),
+        "tries_breakdown": _stats_tries(request.user, wall),
+        "milestones": _stats_milestones(request.user, wall),
         "rank_lines": [(display, ranks[w])
                        for w, display in WALL_CHOICES if w in ranks],
         "recent": list(request.user.ascents.select_related("climb")

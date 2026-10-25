@@ -1410,14 +1410,15 @@ def manifest_view(request):
     through the staticfiles storage for cache-busting names)."""
     from django.contrib.staticfiles.storage import staticfiles_storage
     icons = [
-        ("climbs/icons/icon-192.png", "192x192", None),
-        ("climbs/icons/icon-512.png", "512x512", None),
+        ("climbs/icons/icon-192.png", "192x192", "any"),
+        ("climbs/icons/icon-512.png", "512x512", "any"),
         ("climbs/icons/icon-maskable-512.png", "512x512", "maskable"),
-        ("climbs/icons/apple-touch-icon.png", "180x180", None),
+        ("climbs/icons/apple-touch-icon.png", "180x180", "any"),
     ]
     payload = {
         "name": "Summit Map",
         "short_name": "Summit",
+        "id": "/",
         "start_url": "/",
         "scope": "/",
         "display": "standalone",

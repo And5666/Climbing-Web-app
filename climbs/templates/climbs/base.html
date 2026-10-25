@@ -35,7 +35,7 @@
     <div class="bg-fixed"></div>
 
     <nav aria-label="Primary">
-        <span class="brand" aria-hidden="true">summit<span class="brand-mark">_map</span></span>
+        <span class="brand" aria-hidden="true"><img src="{% static 'climbs/icons/icon-192.png' %}" alt="" class="brand-logo" width="192" height="192">summit<span class="brand-mark">_map</span></span>
         {% with current=request.resolver_match.url_name %}
         <div class="nav-links">
             <a href="{% url 'climbs:map' %}" class="nav-link{% if current == 'map' %} active{% endif %}"{% if current == 'map' %} aria-current="page"{% endif %}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a4.5 4.5 0 0 0-4.5 4.5C3.5 9.5 8 14.5 8 14.5S12.5 9.5 12.5 6A4.5 4.5 0 0 0 8 1.5Zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4Z" fill="currentColor"/></svg>Map</a>
@@ -365,6 +365,9 @@
                     const hide = () => { nudge.hidden = true; };
                     document.getElementById('install-nudge-go')
                         .addEventListener('click', async () => {
+                            // No once: when the prompt has not arrived
+                            // yet this shows the fallback help, and a
+                            // later tap still installs once it has.
                             const shown = await installNow();
                             if (!shown) {
                                 const help = document.getElementById(
@@ -376,7 +379,7 @@
                             } else {
                                 hide();
                             }
-                        }, { once: true });
+                        });
                     document.getElementById('install-nudge-later')
                         .addEventListener('click', () => {
                             record('/accounts/install-prompt/shown/');

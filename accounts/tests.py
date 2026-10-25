@@ -177,6 +177,62 @@ class ProfilePageTests(TestCase):
             reverse("accounts:stats") + "?metric=bogus&range=bogus")
         self.assertContains(fallback, "progress-graph")
 
+    def test_stats_new_sections(self):
+        # Highlights tiles, tries buckets, weekday graph and grade
+        # milestones all render from the same sends.
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        from climbs.models import Ascent, Climb, ClimbSet
+
+        user = self.make_user("statto")
+        wall_set = ClimbSet.objects.create(
+            wall="main", label="Stats set", is_active=True)
+        easy = Climb.objects.create(
+            name="Easy", grade="V1", tag="red", colour="red",
+            wall="main", climb_set=wall_set,
+            x_percent=10.0, y_percent=10.0)
+        hard = Climb.objects.create(
+            name="Hard", grade="V4", tag="blue", colour="blue",
+            wall="main", climb_set=wall_set,
+            x_percent=20.0, y_percent=20.0)
+        easy.ascents.create(user=user, tries=1, points=10)
+        hard.ascents.create(user=user, tries=5, points=20)
+        Ascent.objects.filter(user=user, climb=easy).update(
+            logged_at=now() - timedelta(days=40))
+        self.client.force_login(user)
+        response = self.client.get(reverse("accounts:stats"))
+        self.assertContains(response, "Highlights")
+        self.assertContains(response, "flashes")
+        self.assertContains(response, "avg tries")
+        self.assertContains(response, "top flash")
+        self.assertContains(response, "favourite")
+        self.assertContains(response, "Tries")
+        self.assertContains(response, "10+ tries")
+        self.assertContains(response, "Climbing week")
+        self.assertContains(response, "Milestones")
+        html = response.content.decode()
+        # Climbing week: one horizontal row per weekday, quiet days
+        # receding. Two sends land on different weekdays, so five of
+        # the seven rows are empty.
+        week = html.split("Climbing week")[1].split("Milestones")[0]
+        for label in ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"):
+            self.assertIn(f">{label}<", week)
+        self.assertEqual(week.count("graph-row"), 7)
+        self.assertEqual(week.count("graph-empty"), 5)
+        # Two grades climbed: two milestone rows with day/month dates.
+        milestones = html.split("Milestones")[1].split("Leaderboard")[0]
+        self.assertIn("V1", milestones)
+        self.assertIn("V4", milestones)
+        self.assertIn((now() - timedelta(days=40)).strftime("%d/%m/%Y"),
+                      milestones)
+        # Wall filter empties every new section together.
+        walled = self.client.get(
+            reverse("accounts:stats") + "?wall=cave").content.decode()
+        self.assertNotIn("graph-row", walled)
+        self.assertNotIn("graph-labels-wide", walled)
+
     def test_stats_requires_login(self):
         response = self.client.get(reverse("accounts:stats"))
         self.assertEqual(response.status_code, 302)
@@ -583,6 +639,7 @@ class InstallPromptApiTests(TestCase):
         response = self.client.get(reverse("accounts:profile"))
         self.assertContains(response, "Install app")
         self.assertContains(response, 'id="install-app-btn"')
+        self.assertContains(response, 'id="install-tech"')
         self.assertNotContains(response, 'id="install-remind-again"')
         user.install_prompt_dismissed = True
         user.save()

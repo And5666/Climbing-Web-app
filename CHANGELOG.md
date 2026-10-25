@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.1.0
+
 - Draft-set fix: editing a climb (grade, tag, colour, name,
   position) no longer moves it onto the wall's live set — the set
   only changes when the wall itself changes, which re-homes the

@@ -424,10 +424,19 @@ nav {
 }
 
 .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     font-weight: 800;
     letter-spacing: 0.04em;
     margin-right: 0.4rem;
     white-space: nowrap;
+}
+
+.brand-logo {
+    width: 1.7rem;
+    height: 1.7rem;
+    border-radius: 0.4rem;
 }
 
 .brand-mark {
@@ -1853,13 +1862,27 @@ ul.plain li {
     padding: 1.25rem 0 2.5rem;
 }
 
-.boards h2 {
+.boards-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
     margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: var(--bw) solid var(--border);
+}
+
+.boards-head h2 {
+    margin: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
     font-size: 1rem;
     text-transform: var(--heading-transform);
     letter-spacing: var(--heading-spacing);
-    padding-bottom: 0.5rem;
-    border-bottom: var(--bw) solid var(--border);
+}
+
+.boards-head .btn {
+    flex-shrink: 0;
 }
 
 .board-picker {
@@ -3309,6 +3332,23 @@ ul.plain li {
     white-space: nowrap;
 }
 
+/* Zero rows stay listed but recede, so the active rows pop. */
+.graph-row.graph-empty {
+    opacity: 0.45;
+}
+
+/* Highlights sit under their own heading: no top rule needed. */
+.profile-stats.highlights {
+    margin-top: 0.25rem;
+    border-top: 0;
+}
+
+/* Tries rows carry words, not grades: let the label breathe. */
+.graph-labels-wide .graph-grade {
+    flex: 0 0 auto;
+    min-width: 4.6rem;
+}
+
 /* --- User chips and climber card --- */
 .user-chip {
     display: inline-flex;
@@ -3535,12 +3575,16 @@ button.user-chip:hover {
     padding: 8px;
 }
 
-#share-sheet .share-fallback {
+#share-sheet .share-url-row {
     display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    justify-content: center;
-    margin: 0.7rem 0 0.4rem;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+#share-sheet .share-url-row #share-url {
+    flex: 1;
+    min-width: 0;
+    width: auto;
 }
 
 #share-sheet .share-url-label {
