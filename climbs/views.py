@@ -1407,8 +1407,12 @@ def news_delete_api(request, post_id):
 def manifest_view(request):
     """Web app manifest: installable on iPhone and Android. Icon
     files live under static (hashed in production, so resolve them
-    through the staticfiles storage for cache-busting names)."""
+    through the staticfiles storage for cache-busting names). The
+    manifest also lists itself as a related web app (never
+    preferred) so getInstalledRelatedApps() can report the
+    installed state back to the Install buttons."""
     from django.contrib.staticfiles.storage import staticfiles_storage
+    from django.urls import reverse
     icons = [
         ("climbs/icons/icon-192.png", "192x192", "any"),
         ("climbs/icons/icon-512.png", "512x512", "any"),
@@ -1425,6 +1429,13 @@ def manifest_view(request):
         "background_color": "#070c13",
         "theme_color": "#0e1622",
         "orientation": "portrait-primary",
+        "related_applications": [
+            {
+                "platform": "webapp",
+                "url": request.build_absolute_uri(
+                    reverse("climbs:manifest")),
+            },
+        ],
         "icons": [
             {
                 "src": staticfiles_storage.url(path),

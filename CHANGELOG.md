@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Install nudge is daily now: logged-in users who ignore it or tap
+  "Maybe later" see it again the next day ("Don't show again" stays
+  permanent). It never appears inside the installed web app, and
+  both Install buttons (the nudge and the profile section) re-check
+  whether the app is already installed before prompting.
+
 ## 1.1.0
 
 - Draft-set fix: editing a climb (grade, tag, colour, name,

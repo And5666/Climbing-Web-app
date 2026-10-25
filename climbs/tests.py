@@ -3569,6 +3569,19 @@ class PwaTests(TestCase):
             self.assertTrue(
                 finders.find(f"climbs/icons/{name}"), name)
 
+    def test_manifest_self_lists_for_installed_check(self):
+        # The manifest names itself as a related web app (without
+        # preferring it) so getInstalledRelatedApps() can report
+        # the installed state back to the Install buttons.
+        response = self.client.get(reverse("climbs:manifest"))
+        data = response.json()
+        related = data["related_applications"]
+        self.assertEqual(len(related), 1)
+        self.assertEqual(related[0]["platform"], "webapp")
+        self.assertTrue(
+            related[0]["url"].endswith("/manifest.webmanifest"))
+        self.assertNotIn("prefer_related_applications", data)
+
     def test_service_worker_headers_and_safety(self):
         response = self.client.get(reverse("climbs:sw"))
         self.assertEqual(response.status_code, 200)

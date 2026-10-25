@@ -162,7 +162,10 @@
         // will or won't install right now, so a failure reports its
         // cause instead of silently falling back to instructions.
         async function paintTech() {
-            if (api.isStandalone()) {
+            // Installed covers running as the web app AND installed
+            // elsewhere (reported by the platform): either way the
+            // button becomes the installed note.
+            if (await api.isInstalled()) {
                 btn.hidden = true;
                 if (tech) tech.hidden = true;
                 done.hidden = false;
@@ -228,6 +231,14 @@
             navigator.serviceWorker.ready.then(paintTech, () => {});
         }
         async function activate() {
+            // Installed since this page loaded (another tab): swap
+            // to the installed note instead of a dead prompt.
+            if (await api.isInstalled()) {
+                btn.hidden = true;
+                if (tech) tech.hidden = true;
+                done.hidden = false;
+                return;
+            }
             const result = await api.installNow();
             if (result === 'accepted') {
                 if (tech) tech.hidden = true;

@@ -6,7 +6,7 @@ from django.utils.timezone import now
 
 from summit_map_project import VERSION
 
-INSTALL_PROMPT_COOLDOWN = timedelta(days=14)
+INSTALL_PROMPT_COOLDOWN = timedelta(days=1)
 
 
 def version(request):
@@ -17,8 +17,8 @@ def version(request):
 def install_prompt(request):
     """Whether the PWA install nudge may appear on this page load:
     authenticated users only, never when opted out, at most once per
-    14 days. The client adds its own checks (standalone mode, one
-    appearance per session, admin/map exclusions)."""
+    day. The client adds its own checks (standalone mode, one
+    appearance per session, admin exclusions)."""
     show = False
     user = getattr(request, "user", None)
     if user is not None and user.is_authenticated:

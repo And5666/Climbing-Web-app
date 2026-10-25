@@ -271,12 +271,37 @@
         // here. Helpers live on window.summitInstall.
         (function () {
             function isStandalone() {
+                // Running inside the installed web app rather than a
+                // browser tab: the iOS standalone flag, any installed
+                // display mode, or an Android-app launch referrer.
+                // (Fullscreen is deliberately not listed: a tab showing
+                // DOM fullscreen would falsely match it.)
                 if (window.navigator.standalone) return true;
+                if (document.referrer.indexOf('android-app://') === 0) {
+                    return true;
+                }
                 if (window.matchMedia) {
                     try {
-                        return matchMedia('(display-mode: standalone)').matches;
+                        return ['standalone', 'minimal-ui',
+                            'window-controls-overlay'].some((mode) =>
+                            matchMedia(
+                                '(display-mode: ' + mode + ')').matches);
                     } catch (e) { return false; }
                 }
+                return false;
+            }
+            async function isInstalled() {
+                // Nothing left to install: already running as the web
+                // app, or the platform reports this PWA installed
+                // (Android Chrome, via the manifest's related apps).
+                if (isStandalone()) return true;
+                try {
+                    if (navigator.getInstalledRelatedApps) {
+                        const apps =
+                            await navigator.getInstalledRelatedApps();
+                        if (apps && apps.length) return true;
+                    }
+                } catch (e) { /* unsupported: fall through to false */ }
                 return false;
             }
             function isIOS() {
@@ -315,7 +340,7 @@
                 return outcome;
             }
             window.summitInstall = {
-                isStandalone, isIOS, record, installNow,
+                isStandalone, isInstalled, isIOS, record, installNow,
                 deferred: () => window.deferredInstallPrompt || null,
             };
             window.addEventListener('beforeinstallprompt', (e) => {
@@ -335,11 +360,11 @@
                         .catch(() => {});
                 });
             }
-            // Occasional nudge: authenticated only (the banner only
-            // renders logged in), never standalone, never on admin
-            // tools, at most once per session, and only when the
-            // server says the account is due. It does show on the
-            // map: that is the page people actually use.
+            // Daily nudge: authenticated only (the banner only
+            // renders logged in), never inside the installed web app,
+            // never on admin tools, at most once per session, and
+            // only when the server says the account is due. It does
+            // show on the map: that is the page people actually use.
             function maybeNudge() {
                 const state = document.getElementById('install-nudge-state');
                 const nudge = document.getElementById('install-nudge');
@@ -365,6 +390,13 @@
                     const hide = () => { nudge.hidden = true; };
                     document.getElementById('install-nudge-go')
                         .addEventListener('click', async () => {
+                            // Already installed (added from another tab
+                            // since this page loaded): nothing to
+                            // prompt for, just dismiss.
+                            if (await isInstalled()) {
+                                hide();
+                                return;
+                            }
                             // No once: when the prompt has not arrived
                             // yet this shows the fallback help, and a
                             // later tap still installs once it has.

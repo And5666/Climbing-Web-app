@@ -322,9 +322,9 @@ def password_change_view(request):
 @require_POST
 def install_prompt_shown_api(request):
     """Record a nudge appearance ("shown") or a "Maybe later":
-    both stamp last_shown so the banner rests for 14 days. The
-    body is ignored beyond parsing — bad input still returns JSON,
-    never a 500."""
+    both stamp last_shown so the banner rests until the next day.
+    The body is ignored beyond parsing — bad input still returns
+    JSON, never a 500."""
     try:
         if request.body:
             import json
@@ -349,7 +349,7 @@ def install_prompt_never_api(request):
 @require_POST
 def install_prompt_reset_api(request):
     """Undo the opt-out from the profile page: reminders may show
-    again (subject to the usual 14-day cadence, so also clear the
+    again (subject to the usual daily cadence, so also clear the
     last-shown stamp)."""
     request.user.install_prompt_dismissed = False
     request.user.install_prompt_last_shown = None

@@ -645,3 +645,59 @@ class InstallPromptApiTests(TestCase):
         user.save()
         again = self.client.get(reverse("accounts:profile"))
         self.assertContains(again, "Show install reminders again")
+
+
+class InstallNudgeCadenceTests(TestCase):
+    def make_user(self, username, password="test-pass-123"):
+        return User.objects.create_user(
+            username=username, email=f"{username}@example.com",
+            password=password)
+
+    def nudge_due(self):
+        html = self.client.get(
+            reverse("climbs:map")).content.decode()
+        if 'id="install-nudge-state"' not in html:
+            return None
+        return ('type="application/json">true</script>') in html
+
+    def test_nudge_due_every_day_until_dismissed(self):
+        # Never shown, or last shown over a day ago ("Maybe later"
+        # or ignored): due again. Shown within the day: rests.
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        user = self.make_user("daily")
+        self.client.force_login(user)
+        self.assertTrue(self.nudge_due())
+        user.install_prompt_last_shown = now() - timedelta(hours=25)
+        user.save()
+        self.assertTrue(self.nudge_due())
+        user.install_prompt_last_shown = now() - timedelta(hours=23)
+        user.save()
+        self.assertFalse(self.nudge_due())
+
+    def test_nudge_never_when_dismissed_or_anonymous(self):
+        user = self.make_user("quiet")
+        user.install_prompt_dismissed = True
+        user.save()
+        self.client.force_login(user)
+        self.assertFalse(self.nudge_due())
+        self.client.logout()
+        self.assertIsNone(self.nudge_due())
+
+    def test_install_buttons_recheck_installed(self):
+        # Both Install buttons ask the shared helper whether the
+        # app is already installed (running as the web app, or
+        # reported installed) before showing any prompt; the
+        # nudge itself never renders inside the installed app.
+        user = self.make_user("checker")
+        self.client.force_login(user)
+        page = self.client.get(reverse("climbs:map"))
+        self.assertContains(page, 'id="install-nudge-go"')
+        self.assertContains(page, "isInstalled")
+        self.assertContains(page, "display-mode: ")
+        self.assertContains(page, "minimal-ui")
+        profile = self.client.get(reverse("accounts:profile"))
+        self.assertContains(profile, 'id="install-app-btn"')
+        self.assertContains(profile, "isInstalled")
