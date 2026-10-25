@@ -337,8 +337,9 @@
             }
             // Occasional nudge: authenticated only (the banner only
             // renders logged in), never standalone, never on admin
-            // tools or the full-screen map, at most once per session,
-            // and only when the server says the account is due.
+            // tools, at most once per session, and only when the
+            // server says the account is due. It does show on the
+            // map: that is the page people actually use.
             function maybeNudge() {
                 const state = document.getElementById('install-nudge-state');
                 const nudge = document.getElementById('install-nudge');
@@ -349,7 +350,7 @@
                 } catch (e) { due = false; }
                 if (!due || isStandalone()) return;
                 const path = window.location.pathname;
-                if (path === '/' || path.indexOf('/admin-tools/') === 0 ||
+                if (path.indexOf('/admin-tools/') === 0 ||
                         path.indexOf('/admin/') === 0) return;
                 try {
                     if (sessionStorage.getItem('summit-install-nudge')) return;
