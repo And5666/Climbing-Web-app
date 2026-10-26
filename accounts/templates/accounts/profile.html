@@ -55,12 +55,11 @@
             </div>
         </div>
 
-        <div class="sheet-section">
+        <div class="sheet-section" id="install-section">
             <h3>Install app</h3>
             <p class="muted" id="install-status">Add Summit Map to your home screen for a full-screen shortcut.</p>
             <p><button class="btn btn-md" id="install-app-btn" type="button" hidden>Install app</button></p>
             <p class="muted" id="install-tech" hidden></p>
-            <p class="muted" id="install-done-note" hidden>Installed — open it from your home screen.</p>
             <div id="install-ios-help" hidden>
                 <p class="muted">On iPhone there is no install button: tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</p>
             </div>
@@ -135,14 +134,15 @@
 {% block scripts %}
 <script>
     // Install app: the button uses the deferred beforeinstallprompt
-    // captured in base.html. Installed already: a quiet note instead.
-    // iOS (no prompt event): inline Share-instructions. Desktop with
-    // no prompt: honest browser-menu instructions. No dead buttons.
+    // captured in base.html. Installed already: the whole section
+    // hides, nothing left to do here. iOS (no prompt event): inline
+    // Share-instructions. Desktop with no prompt: honest
+    // browser-menu instructions. No dead buttons.
     // A one-line diagnostic under the button names the current
     // blocker (http, missing server files, no prompt yet).
     (function () {
+        const section = document.getElementById('install-section');
         const btn = document.getElementById('install-app-btn');
-        const done = document.getElementById('install-done-note');
         const iosHelp = document.getElementById('install-ios-help');
         const deskHelp = document.getElementById('install-desktop-help');
         const outcome = document.getElementById('install-outcome');
@@ -164,11 +164,9 @@
         async function paintTech() {
             // Installed covers running as the web app AND installed
             // elsewhere (reported by the platform): either way the
-            // button becomes the installed note.
+            // section hides — nothing left to install.
             if (await api.isInstalled()) {
-                btn.hidden = true;
-                if (tech) tech.hidden = true;
-                done.hidden = false;
+                if (section) section.hidden = true;
                 return;
             }
             if (!window.isSecureContext) {
@@ -218,8 +216,7 @@
             techSay('Waiting for the browser install signal — reload if this never changes.');
         }
         if (api.isStandalone()) {
-            btn.hidden = true;
-            done.hidden = false;
+            if (section) section.hidden = true;
             return;
         }
         btn.hidden = false;
@@ -231,18 +228,15 @@
             navigator.serviceWorker.ready.then(paintTech, () => {});
         }
         async function activate() {
-            // Installed since this page loaded (another tab): swap
-            // to the installed note instead of a dead prompt.
+            // Installed since this page loaded (another tab): hide
+            // the section instead of a dead prompt.
             if (await api.isInstalled()) {
-                btn.hidden = true;
-                if (tech) tech.hidden = true;
-                done.hidden = false;
+                if (section) section.hidden = true;
                 return;
             }
             const result = await api.installNow();
             if (result === 'accepted') {
-                if (tech) tech.hidden = true;
-                say('Installed — open it from your home screen.');
+                if (section) section.hidden = true;
             } else if (result === 'dismissed') {
                 say('No problem — the button stays here if you change your mind.');
             } else if (result) {

@@ -638,8 +638,13 @@ class InstallPromptApiTests(TestCase):
         self.client.force_login(user)
         response = self.client.get(reverse("accounts:profile"))
         self.assertContains(response, "Install app")
+        self.assertContains(response, 'id="install-section"')
         self.assertContains(response, 'id="install-app-btn"')
         self.assertContains(response, 'id="install-tech"')
+        # Installed: the whole section hides (no leftover "installed"
+        # note element), wired in the profile script.
+        self.assertNotContains(response, "install-done-note")
+        self.assertContains(response, "section.hidden = true")
         self.assertNotContains(response, 'id="install-remind-again"')
         user.install_prompt_dismissed = True
         user.save()

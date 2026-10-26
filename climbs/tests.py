@@ -3616,6 +3616,9 @@ class LeaderboardShareTests(ClimbTestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Share with friends")
         self.assertContains(response, 'id="share-open"')
+        # Primary accent button, not the muted secondary: the share
+        # trigger is the page's main call to action.
+        self.assertContains(response, 'class="btn btn-sm" id="share-open"')
         self.assertContains(response, 'role="dialog"')
         self.assertContains(response, 'aria-modal="true"')
         self.assertContains(response, 'id="share-qr"')

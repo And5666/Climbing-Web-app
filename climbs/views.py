@@ -1450,7 +1450,7 @@ def manifest_view(request):
 
 
 SERVICE_WORKER_JS = """\
-const CACHE = "summit-map-v1";
+const CACHE = "summit-map-v2";
 // Same-origin static assets only: HTML/navigations are never cached
 // (authenticated pages must stay fresh), and neither are non-GET or
 // cross-origin requests.

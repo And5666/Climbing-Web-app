@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- New app icon (navy/orange "S" + peaks) across the PWA set
+  (192/512/512-maskable/180, nav logo, manifest). Service worker
+  cache bumped to v2 so the deploy drops the old icons and manifest
+  once clients pick up the fresh worker.
+- Leaderboard "Share with friends" is the primary accent button now,
+  not the muted secondary.
+- Profile "Install app" section hides entirely once the app is
+  installed (running as the web app, reported installed, or just
+  accepted) instead of showing an installed note.
 - Install nudge is daily now: logged-in users who ignore it or tap
   "Maybe later" see it again the next day ("Don't show again" stays
   permanent). It never appears inside the installed web app, and
