@@ -3541,7 +3541,7 @@ class PwaTests(TestCase):
                       response["Content-Type"])
         data = response.json()
         self.assertEqual(data["name"], "Summit Map")
-        self.assertEqual(data["short_name"], "Summit")
+        self.assertEqual(data["short_name"], "Summit Map")
         self.assertEqual(data["id"], "/")
         self.assertEqual(data["start_url"], "/")
         self.assertEqual(data["scope"], "/")

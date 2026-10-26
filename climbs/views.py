@@ -1421,7 +1421,7 @@ def manifest_view(request):
     ]
     payload = {
         "name": "Summit Map",
-        "short_name": "Summit",
+        "short_name": "Summit Map",
         "id": "/",
         "start_url": "/",
         "scope": "/",
@@ -1450,7 +1450,7 @@ def manifest_view(request):
 
 
 SERVICE_WORKER_JS = """\
-const CACHE = "summit-map-v2";
+const CACHE = "summit-map-v4";
 // Same-origin static assets only: HTML/navigations are never cached
 // (authenticated pages must stay fresh), and neither are non-GET or
 // cross-origin requests.

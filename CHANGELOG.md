@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- App icon corners filled (full-bleed navy, no more white borders
+  under the OS mask), PWA set regenerated, and the app is named
+  "Summit Map" everywhere (manifest short name, iOS web-app title,
+  default page title). Service worker cache bumped to v4 so the
+  deploy drops the old icons and manifest once clients pick up the
+  fresh worker.
 - New app icon (navy/orange "S" + peaks) across the PWA set
   (192/512/512-maskable/180, nav logo, manifest). Service worker
   cache bumped to v2 so the deploy drops the old icons and manifest
