@@ -52,18 +52,12 @@ and of everyone climbing it.
 
 <table>
   <tr>
-    <td width="62%"><img src="docs/screenshots/leaderboard.png" alt="Leaderboard for both walls"></td>
-    <td width="38%"><img src="docs/screenshots/mobile.png" alt="The wall map installed on a phone"></td>
-  </tr>
-  <tr>
-    <td>Leaderboard — points, sends and places for each wall.</td>
-    <td>The map on a phone, installed as an app.</td>
+    <td width="50%"><img src="docs/screenshots/leaderboard.png" alt="Leaderboard for both walls"></td>
+    <td width="50%"><img src="docs/screenshots/news.png" alt="Gym news page"></td>
   </tr>
 </table>
 
-<p align="center">
-  <img src="docs/screenshots/news.png" alt="Gym news page" width="78%">
-</p>
+<p align="center"><sub>Leaderboard: points, sends and places for each wall &nbsp;·&nbsp; Gym news</sub></p>
 
 ## Stack
 
