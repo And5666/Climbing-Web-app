@@ -342,7 +342,7 @@ class ProfilePageTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "theme-toggle")
         for theme in ("abyss", "blueprint", "ember", "forest", "clay",
-                      "modern", "midnight", "guidebook", "guidebook-night"):
+                      "modern", "midnight", "notebook", "notebook-night"):
             self.assertContains(response, f'data-theme-set="{theme}"')
         self.assertContains(response, "summit-theme")
 

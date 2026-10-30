@@ -9,9 +9,14 @@
         <h2>Leaderboard</h2>
         <button class="btn btn-sm" id="share-open" type="button" aria-haspopup="dialog">Share with friends</button>
     </div>
+    <div class="wall-tabs" role="tablist" aria-label="Wall">
+        {% for wall in walls %}
+            <button type="button" role="tab" id="wall-tab-{{ wall.wall }}" data-wall-tab="{{ wall.wall }}" aria-controls="board-{{ wall.wall }}" aria-selected="{% if wall.wall == selected_wall %}true{% else %}false{% endif %}">{{ wall.wall_display }}</button>
+        {% endfor %}
+    </div>
     <div class="board-columns">
         {% for wall in walls %}
-            <section class="board">
+            <section class="board" data-wall="{{ wall.wall }}" id="board-{{ wall.wall }}"{% if wall.wall != selected_wall %} hidden{% endif %}>
                 <h3>{{ wall.wall_display }}{% if wall.climb_count %} <span class="muted">{{ wall.climb_count }} climbs</span>{% endif %}</h3>
                 {% if wall.is_archived %}
                     <p class="archive-note">Archived · {{ wall.selected_set.range_start|date:"j M Y" }}{% if wall.selected_set.range_end %} – {{ wall.selected_set.range_end|date:"j M Y" }}{% endif %}</p>
@@ -54,7 +59,7 @@
 
     <div class="board-columns">
         {% for wall in walls %}
-            <section class="board">
+            <section class="board" data-wall="{{ wall.wall }}" id="board-{{ wall.wall }}-stats"{% if wall.wall != selected_wall %} hidden{% endif %}>
                 <h3>{{ wall.wall_display }} · stats</h3>
                 {% if wall.stats and wall.stats.total_sends %}
                     {% if not wall.stats.best_rated and not wall.stats.most_popular and not wall.stats.softest and not wall.stats.hardest %}
@@ -111,6 +116,7 @@
     <details class="past-boards">
         <summary>Past boards</summary>
         {% for wall in walls %}
+            <div class="past-wall" data-wall="{{ wall.wall }}"{% if wall.wall != selected_wall %} hidden{% endif %}>
             <h4>{{ wall.wall_display }}</h4>
             {% if wall.archived_sets %}
                 <form method="get" action="{% url 'climbs:leaderboard' %}" class="past-list">
@@ -124,6 +130,7 @@
             {% else %}
                 <p class="muted">Nothing archived yet.</p>
             {% endif %}
+            </div>
         {% endfor %}
     </details>
 
@@ -150,6 +157,82 @@
 
 {% block scripts %}
 <script src="{% static 'climbs/vendor/qrcode.js' %}"></script>
+<script>
+    // Wall tabs: one board at a time. ?wall= or a *_set param wins;
+    // otherwise the last wall used on this device (default main).
+    (function () {
+        const tabs = [...document.querySelectorAll('[data-wall-tab]')];
+        const sections = [...document.querySelectorAll('[data-wall]')];
+        if (!tabs.length) return;
+        const KEY = 'summit-board-wall';
+        const params = new URLSearchParams(location.search);
+        const explicit = params.has('wall') ||
+            params.has('main_set') || params.has('cave_set');
+
+        function activate(wall, updateHistory, persist) {
+            if (!wall) return;
+            tabs.forEach((tab) => {
+                const on = tab.dataset.wallTab === wall;
+                tab.setAttribute('aria-selected', String(on));
+                tab.tabIndex = on ? 0 : -1;
+            });
+            sections.forEach((section) => {
+                if (section.dataset.wall === wall) {
+                    section.removeAttribute('hidden');
+                } else {
+                    section.setAttribute('hidden', '');
+                }
+            });
+            if (updateHistory) {
+                const url = new URL(location.href);
+                url.searchParams.set('wall', wall);
+                history.replaceState(null, '', url);
+            }
+            if (persist) {
+                try {
+                    localStorage.setItem(KEY, wall);
+                } catch (e) { /* private mode: choice lasts the visit */ }
+            }
+        }
+
+        tabs.forEach((tab) => {
+            tab.addEventListener('click', () => {
+                activate(tab.dataset.wallTab, true, true);
+            });
+            tab.addEventListener('keydown', (e) => {
+                const keys = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
+                if (!keys.includes(e.key)) return;
+                e.preventDefault();
+                let index = tabs.indexOf(tab);
+                if (e.key === 'ArrowRight') {
+                    index = (index + 1) % tabs.length;
+                } else if (e.key === 'ArrowLeft') {
+                    index = (index - 1 + tabs.length) % tabs.length;
+                } else if (e.key === 'Home') {
+                    index = 0;
+                } else {
+                    index = tabs.length - 1;
+                }
+                const next = tabs[index];
+                activate(next.dataset.wallTab, true, true);
+                next.focus();
+            });
+        });
+
+        const current = tabs.find(
+            (tab) => tab.getAttribute('aria-selected') === 'true');
+        let saved = null;
+        try {
+            saved = localStorage.getItem(KEY);
+        } catch (e) { /* private mode */ }
+        if (!explicit && saved && tabs.some(
+                (tab) => tab.dataset.wallTab === saved)) {
+            activate(saved, true, false);
+        } else if (current) {
+            activate(current.dataset.wallTab, false, true);
+        }
+    })();
+</script>
 <script>
     // Share with friends: a dialog with a QR code (drawn client-side
     // from the vendored qrcode matrix) plus the plain link with a copy

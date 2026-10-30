@@ -152,6 +152,26 @@
             schedule();
         }
 
+        function reset() {
+            // The default view: minimum (fit) scale, wall centred in
+            // the viewport. Used by the map's "Fit wall" control.
+            var s = sizes();
+            state.scale = minScale();
+            state.x = (s.vw - s.cw * state.scale) / 2;
+            state.y = (s.vh - s.ch * state.scale) / 2;
+            schedule();
+        }
+
+        function setView(scale, x, y) {
+            // Restoring a saved view (filter reload): clamp it to the
+            // current viewport instead of trusting stale numbers.
+            state.scale = clampScale(
+                Number(scale) || minScale(), minScale());
+            state.x = Number(x) || 0;
+            state.y = Number(y) || 0;
+            schedule();
+        }
+
         function forgetPointer(e) {
             pointers.delete(e.pointerId);
             delete captured[e.pointerId];
@@ -268,6 +288,11 @@
             refresh: refresh,
             centerOn: centerOn,
             zoomAt: zoomAt,
+            reset: reset,
+            getState: function () {
+                return {scale: state.scale, x: state.x, y: state.y};
+            },
+            setView: setView,
             onTransform: function (fn) { onTransform = fn; },
             // Marker drags (admin) pause panning so the marker moves
             // instead of the map; taps still reach the marker.

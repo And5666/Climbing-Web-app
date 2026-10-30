@@ -254,6 +254,19 @@ def _set_stats(climb_set):
     }
 
 
+def _leaderboard_wall(request):
+    """Wall whose board is open: ?wall= wins, then a set param, else
+    Main Wall. The client may switch to the last wall it remembers
+    when the URL is neutral."""
+    wall = request.GET.get("wall")
+    if wall in WALL_VALUES:
+        return wall
+    for value, _display in WALL_CHOICES:
+        if request.GET.get(f"{value}_set"):
+            return value
+    return "main"
+
+
 def leaderboard_view(request):
     walls = []
     for wall, wall_display in WALL_CHOICES:
@@ -318,7 +331,10 @@ def leaderboard_view(request):
             "stats": _set_stats(selected),
             "climb_count": climb_count,
         })
-    return render(request, "climbs/leaderboard.html", {"walls": walls})
+    return render(request, "climbs/leaderboard.html", {
+        "walls": walls,
+        "selected_wall": _leaderboard_wall(request),
+    })
 
 
 def _tag_grade_error(tag, grade):

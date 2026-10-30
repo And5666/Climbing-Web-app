@@ -276,10 +276,10 @@
     --wall-line-dim: #99a0a8;
 }
 
-/* Guidebook: the printed guidebook look — cream paper, ink rules,
-   serif headlines and mono labels. Light counterpart to Guidebook
+/* Notebook: the printed notebook look — cream paper, ink rules,
+   serif headlines and mono labels. Light counterpart to Notebook
    Night, both borrowed from the climbelo logbook aesthetic. */
-:root[data-theme="guidebook"] {
+:root[data-theme="notebook"] {
     color-scheme: light;
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-display: ui-serif, Georgia, "Times New Roman", serif;
@@ -316,9 +316,9 @@
     --wall-line-dim: #8a8578;
 }
 
-/* Guidebook Night: the same printed page after dark — warm near-black
+/* Notebook Night: the same printed page after dark — warm near-black
    stock, paper-coloured ink, the red accent kept for the mark. */
-:root[data-theme="guidebook-night"] {
+:root[data-theme="notebook-night"] {
     color-scheme: dark;
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-display: ui-serif, Georgia, "Times New Roman", serif;
@@ -430,15 +430,15 @@ h1, h2, h3, h4 {
     background-image: url("/static/climbs/bg-grid-clay.jpg");
 }
 
-/* Guidebook themes sit on flat paper stock with the faintest
+/* Notebook themes sit on flat paper stock with the faintest
    printed dot grid, not a photographic tile. */
-:root[data-theme="guidebook"] .bg-fixed {
+:root[data-theme="notebook"] .bg-fixed {
     background-color: var(--bg);
     background-image: radial-gradient(rgba(20, 19, 15, 0.10) 1px, transparent 1.1px);
     background-size: 18px 18px;
 }
 
-:root[data-theme="guidebook-night"] .bg-fixed {
+:root[data-theme="notebook-night"] .bg-fixed {
     background-color: var(--bg);
     background-image: radial-gradient(rgba(243, 240, 233, 0.07) 1px, transparent 1.1px);
     background-size: 18px 18px;
@@ -451,22 +451,22 @@ h1, h2, h3, h4 {
     .login-box h2, .auth-form h2, .brand, nav a, .btn),
 :root[data-theme="clay"] :is(.card h3, .boards h2, .board h3,
     .login-box h2, .auth-form h2, .brand, nav a, .btn),
-:root[data-theme="guidebook"] :is(.card h3, .boards h2, .board h3,
+:root[data-theme="notebook"] :is(.card h3, .boards h2, .board h3,
     .login-box h2, .auth-form h2, .brand, nav a, .btn),
-:root[data-theme="guidebook-night"] :is(.card h3, .boards h2, .board h3,
+:root[data-theme="notebook-night"] :is(.card h3, .boards h2, .board h3,
     .login-box h2, .auth-form h2, .brand, nav a, .btn) {
     letter-spacing: 0.03em;
 }
 
-/* Guidebook keeps the wordmark serif and the nav sans, but switches
+/* Notebook keeps the wordmark serif and the nav sans, but switches
    the working UI (buttons, table labels) to mono, like a logbook. */
-:root[data-theme="guidebook"] :is(.btn, .theme-btn, .stat-label, th, .chip, .tag),
-:root[data-theme="guidebook-night"] :is(.btn, .theme-btn, .stat-label, th, .chip, .tag) {
+:root[data-theme="notebook"] :is(.btn, .theme-btn, .stat-label, th, .chip, .tag),
+:root[data-theme="notebook-night"] :is(.btn, .theme-btn, .stat-label, th, .chip, .tag) {
     font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
-:root[data-theme="guidebook"] .brand,
-:root[data-theme="guidebook-night"] .brand {
+:root[data-theme="notebook"] .brand,
+:root[data-theme="notebook-night"] .brand {
     font-family: var(--font-display);
 }
 
@@ -486,68 +486,12 @@ nav {
     font-family: var(--font-display);
 }
 
-/* Phones fit the whole bar on one row: the links scroll sideways
-   instead of wrapping the profile chip onto the map controls. */
-@media (max-width: 600px) {
-    nav {
-        gap: 0.4rem;
-        padding: 0.45rem 0.5rem;
-    }
-
-    .brand {
-        font-size: 0.78rem;
-        margin-right: 0;
-    }
-
-    .nav-links {
-        min-width: 0;
-        overflow-x: auto;
-        scrollbar-width: none;
-        gap: 0.4rem;
-    }
-
-    .nav-links::-webkit-scrollbar {
-        display: none;
-    }
-
-    nav a {
-        font-size: 0.68rem;
-        padding: 0.5rem 0.5rem;
-        white-space: nowrap;
-    }
-
-    /* Four items plus the account chip do not fit beside each other
-       at 390px with icons in tow. Drop the icons on phones: the
-       labels are short and the whole bar stays on one row without
-       hiding "News" behind a sideways scroll. */
-    nav a svg {
-        display: none;
-    }
-
-    .nav-links {
-        gap: 0.3rem;
-    }
-
-    /* Admin lives on the profile on phones: five items never fit,
-       and the wall editor needs a wider screen anyway. */
-    [data-nav-admin] {
-        display: none;
-    }
-
-    .nav-user {
-        flex-shrink: 0;
-        gap: 0.4rem;
-    }
-
-    .nav-profile {
-        font-size: 0.72rem;
-        padding: 0.3rem 0.45rem 0.3rem 0.3rem;
-    }
-
-    .nav-user .btn {
-        font-size: 0.68rem;
-        padding: 0.5rem 0.55rem;
-    }
+/* PWA: let the nav grow into the notch/status-bar inset so its
+   background covers the safe area instead of leaving a strip. The
+   compact phone block below re-states the same inset after the
+   wider base nav rules. */
+nav {
+    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
 }
 
 .brand {
@@ -629,6 +573,40 @@ nav a svg {
     border-left: 1px solid var(--border-soft);
 }
 
+/* Theme control: a compact 44px swatch button, visible logged in or
+   out. It never crowds the phone bar because it is icon-only. */
+.nav-theme {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
+    padding: 0;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-btn);
+    cursor: pointer;
+}
+
+.nav-theme:hover {
+    color: var(--text);
+    background: var(--surface-2);
+    border-color: var(--border-soft);
+}
+
+.nav-theme svg {
+    width: 1.15rem;
+    height: 1.15rem;
+}
+
+.nav-theme:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* Account: its own pill, visually separate from the nav links. */
 .nav-profile {
     display: flex;
@@ -692,6 +670,7 @@ nav a svg {
 @media (max-width: 480px) {
     nav {
         padding: 0.5rem 0.6rem;
+        padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
         gap: 0.5rem;
     }
 
@@ -701,6 +680,64 @@ nav a svg {
 
     .nav-name {
         display: none;
+    }
+}
+
+/* The base nav rules above are declared after the first phone block,
+   so repeat the compact sizing here where it actually wins. This is
+   what keeps Map, Leaderboard, News, the theme button and Sign in on
+   one row at 390px without sideways scrolling. */
+@media (max-width: 600px) {
+    nav {
+        gap: 0.4rem;
+        padding: 0.45rem 0.5rem;
+        padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
+    }
+
+    .brand {
+        font-size: 0.78rem;
+        margin-right: 0;
+    }
+
+    .nav-links {
+        min-width: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        gap: 0.3rem;
+    }
+
+    .nav-links::-webkit-scrollbar {
+        display: none;
+    }
+
+    nav a {
+        font-size: 0.66rem;
+        padding: 0.5rem 0.42rem;
+        white-space: nowrap;
+    }
+
+    nav a svg {
+        display: none;
+    }
+
+    [data-nav-admin] {
+        display: none;
+    }
+
+    .nav-user {
+        flex-shrink: 0;
+        gap: 0.4rem;
+        padding-left: 0.5rem;
+    }
+
+    .nav-profile {
+        font-size: 0.72rem;
+        padding: 0.3rem 0.45rem 0.3rem 0.3rem;
+    }
+
+    .nav-user .btn {
+        font-size: 0.68rem;
+        padding: 0.5rem 0.55rem;
     }
 }
 
@@ -987,6 +1024,7 @@ nav a svg {
 .theme-toggle .theme-btn {
     flex: 1 1 28%;
     margin-top: 0;
+    min-height: 44px;
     /* Neutral until chosen: the accent fill marks the active theme,
        instead of every button shouting in the accent colour. */
     background: var(--surface-2);
@@ -1002,6 +1040,86 @@ nav a svg {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--accent-ink);
+}
+
+/* Theme picker sheet: available on every page, logged in or out. */
+.theme-picker {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: none;
+}
+
+.theme-picker.open {
+    display: block;
+}
+
+.theme-picker-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.theme-picker-box {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: min(560px, 100%);
+    max-height: 80dvh;
+    overflow-y: auto;
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    box-shadow: var(--shadow);
+}
+
+.theme-picker-box h2 {
+    margin: 0 0 0.25rem;
+    padding-right: 2.5rem;
+    font-size: 0.95rem;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
+}
+
+.theme-picker-box .muted {
+    margin: 0 0 0.75rem;
+    font-size: 0.82rem;
+}
+
+.theme-picker-x {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.theme-picker-x:hover {
+    color: var(--text);
+}
+
+.theme-picker-grid {
+    margin-top: 0;
+}
+
+@media (min-width: 700px) {
+    .theme-picker-box {
+        top: 50%;
+        bottom: auto;
+        transform: translate(-50%, -50%);
+        border-bottom: 1px solid var(--border);
+        border-radius: var(--r-md);
+        padding-bottom: 1rem;
+    }
 }
 /* --- Generic button --- */
 .btn {
@@ -1315,6 +1433,24 @@ main {
 }
 
 /* --- Map viewport / zoom container --- */
+/* The map page is a flex row on wide screens (filter sidebar + wall)
+   and a single column on phones (the filter panel becomes a sheet). */
+.map-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    position: relative;
+}
+
+.map-stage {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+}
+
 #map-viewport {
     position: relative;
     width: 100%;
@@ -2021,6 +2157,53 @@ ul.plain li {
     flex-shrink: 0;
 }
 
+/* Wall tabs: one board at a time instead of a long double scroll. */
+.wall-tabs {
+    display: flex;
+    gap: 0.4rem;
+    margin: 0 0 1rem;
+    padding: 0.25rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-btn);
+}
+
+.wall-tabs [role="tab"] {
+    flex: 1;
+    min-height: 44px;
+    padding: 0.45rem 0.6rem;
+    color: var(--muted);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: calc(var(--r-btn) - 2px);
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+}
+
+.wall-tabs [role="tab"]:hover {
+    color: var(--text);
+    border-color: var(--border-soft);
+}
+
+.wall-tabs [role="tab"][aria-selected="true"] {
+    color: var(--accent-ink);
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.wall-tabs [role="tab"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+[data-wall][hidden] {
+    display: none;
+}
+
 .board-picker {
     display: flex;
     gap: 0.75rem 1.5rem;
@@ -2574,113 +2757,176 @@ ul.plain li {
 .pos-3 {
     color: var(--sand);
 }
-/* Sets live in a slide-over tab on the screen edge: closed it is
-   just the tab, open it is a panel over the map. The disclosure
-   itself does the toggling, so no script is needed. */
-#set-switcher {
-    position: fixed;
-    left: 0;
-    top: 4.25rem;
-    z-index: 90;
-    margin: 0;
-    width: auto;
-    max-width: calc(100vw - 1rem);
-    /* Elevated panel, not page surface: the bar sits over busy wall
-       art, so it needs its own tonal step to stand out shadow-free. */
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 0 var(--r-md) var(--r-md) 0;
-    overflow: hidden;
-}
-
-/* Open, the switcher is a docked drawer; closed, a compact tab. */
-#set-switcher[open] {
-    width: min(320px, calc(100vw - 1rem));
-}
-
-#set-switcher > summary {
-    list-style: none;
-    cursor: grab;
-    touch-action: pan-y;
-    user-select: none;
-    -webkit-user-select: none;
-    display: flex;
-    flex-direction: column;
+/* Map filters: a compact floating button over the wall opens a
+   bottom sheet on phones; the same panel is a static sidebar on
+   wide screens. It sits below the climb sheet (z 100) and above the
+   map controls. */
+.map-filter-btn,
+.map-fit-btn {
+    position: absolute;
+    z-index: 60;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.6rem;
-    width: 26px;
-    min-height: 46vh;
-    padding: 0.9rem 0;
-    font-size: 0.72rem;
+    gap: 0.4rem;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 0.75rem;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    box-shadow: var(--shadow);
+    font: inherit;
+    font-size: 0.78rem;
     font-weight: 800;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text);
-    white-space: nowrap;
-    box-shadow: inset -2px 0 0 var(--accent);
+    letter-spacing: 0.05em;
+    cursor: pointer;
 }
 
-/* Shut, the tab is a slim smooth line with a vertical label. */
-#set-switcher .set-tab-text {
-    writing-mode: vertical-rl;
-    letter-spacing: 0.3em;
+.map-filter-btn {
+    left: 0.7rem;
+    bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));
 }
 
-#set-switcher[open] > summary {
-    flex-direction: row;
-    width: auto;
-    min-height: 48px;
-    padding: 0 0.9rem;
-    font-size: 0.85rem;
-    box-shadow: none;
+.map-fit-btn {
+    right: 0.7rem;
+    bottom: calc(2.4rem + env(safe-area-inset-bottom, 0px));
 }
 
-#set-switcher[open] .set-tab-text {
-    writing-mode: horizontal-tb;
-    letter-spacing: 0.06em;
+.map-filter-btn svg,
+.map-fit-btn svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    flex-shrink: 0;
 }
 
-#set-switcher > summary::-webkit-details-marker {
+.map-filter-btn:focus-visible,
+.map-fit-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.filter-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    padding: 0 0.25rem;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.filter-badge[hidden] {
     display: none;
 }
 
-#set-switcher > summary::before {
-    content: "▸";
-    margin: 0;
-    flex-shrink: 0;
-    color: var(--muted);
+.filter-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 94;
+    background: rgba(0, 0, 0, 0.55);
 }
 
-#set-switcher[open] > summary::before {
-    content: "▾";
+.filter-scrim[hidden] {
+    display: none;
 }
 
-#set-switcher[open] > summary {
+.filter-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 95;
+    max-height: 88dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    box-shadow: var(--shadow);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    transform: translateY(103%);
+    transition: transform 0.28s cubic-bezier(0.32, 0.72, 0.35, 1);
+    visibility: hidden;
+    overflow: hidden;
+}
+
+body.filter-open .filter-panel {
+    transform: none;
+    visibility: visible;
+}
+
+.filter-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.55rem 0.5rem 0.55rem 0.9rem;
     border-bottom: 1px solid var(--border-soft);
-    background: var(--surface-2);
+    flex-shrink: 0;
 }
 
-#set-switcher > summary:hover {
-    background: var(--surface-2);
+.filter-head h2 {
+    margin: 0;
+    font-size: 0.9rem;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
 }
 
-#set-switcher .set-panel {
+.filter-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+}
+
+.filter-x,
+.filter-done {
+    min-height: 44px;
+    min-width: 44px;
+}
+
+.filter-x {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.filter-x:hover {
+    color: var(--text);
+}
+
+.filter-done {
+    margin: 0;
+}
+
+.filter-panel .set-panel {
     display: flex;
     flex-direction: column;
     gap: 0.7rem;
-    padding: 0.8rem 0.9rem;
-    max-height: calc(100dvh - 12rem);
+    padding: 0.8rem 0.9rem 1rem;
     overflow-y: auto;
+    min-height: 0;
 }
 
-#set-switcher .set-current {
+.filter-panel .set-current {
     margin: 0;
     font-size: 0.85rem;
     font-weight: 700;
 }
 
-#set-switcher form {
+.filter-panel form {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
@@ -2688,21 +2934,191 @@ ul.plain li {
     border-top: none;
 }
 
-#set-switcher .set-panel label {
+.filter-panel .set-panel label {
     display: flex;
     flex-direction: column;
     align-items: stretch;
     gap: 0.3rem;
 }
 
-#set-switcher .set-panel select {
+.filter-panel .set-panel select {
     width: 100%;
     max-width: none;
 }
 
-#set-switcher .muted {
+.filter-panel .muted {
     padding: 0;
     margin: 0;
+}
+
+/* Climb search: type-as-you-go matches from the current wall. */
+.climb-search {
+    position: relative;
+    display: block;
+}
+
+.climb-search input {
+    width: 100%;
+    min-height: 44px;
+    padding: 0.5rem 2.6rem 0.5rem 0.65rem;
+    color: var(--text);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    font: inherit;
+}
+
+.climb-search input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.climb-search-clear {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.climb-search-clear[hidden] {
+    display: none;
+}
+
+.climb-results {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+}
+
+.climb-results:empty {
+    display: none;
+}
+
+.climb-results li + li {
+    border-top: 1px solid var(--border-soft);
+}
+
+.climb-result {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    min-height: 44px;
+    padding: 0.4rem 0.55rem;
+    background: none;
+    border: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 0.85rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.climb-result:hover {
+    background: var(--surface-2);
+}
+
+.climb-result-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.climb-result-grade {
+    flex-shrink: 0;
+    font-weight: 800;
+    color: var(--muted);
+}
+
+.climb-result .colour-dot {
+    flex-shrink: 0;
+}
+
+@media (min-width: 1000px) {
+    .map-layout {
+        flex-direction: row;
+    }
+
+    .filter-panel {
+        position: static;
+        order: -1;
+        width: 320px;
+        flex-shrink: 0;
+        max-height: none;
+        height: auto;
+        border: none;
+        border-right: 1px solid var(--border);
+        border-radius: 0;
+        box-shadow: none;
+        transform: none;
+        visibility: visible;
+        padding-bottom: 0;
+    }
+
+    .filter-head {
+        padding-left: 1rem;
+    }
+
+    .filter-x,
+    .filter-done {
+        display: none;
+    }
+
+    .filter-panel .set-panel {
+        padding: 0.9rem 1rem 1.5rem;
+    }
+
+    .map-filter-btn,
+    .filter-scrim {
+        display: none;
+    }
+
+    .map-fit-btn {
+        bottom: 1rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .filter-panel {
+        transition: none;
+    }
+}
+
+.climb-list-section {
+    display: none;
+}
+
+.climb-list-title {
+    margin: 0.2rem 0 0.4rem;
+    font-size: 0.75rem;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
+    color: var(--muted);
+}
+
+@media (min-width: 1000px) {
+    .climb-list-section {
+        display: block;
+    }
+
+    .climb-list {
+        max-height: 42vh;
+        overflow-y: auto;
+    }
 }
 
 .marker-filter {
@@ -2761,7 +3177,7 @@ ul.plain li {
     padding: 0.55rem 0.9rem;
 }
 
-#set-switcher label,
+.filter-panel label,
 #admin-picker label {
     display: inline-flex;
     align-items: center;
@@ -2770,7 +3186,7 @@ ul.plain li {
     color: var(--muted);
 }
 
-#set-switcher select,
+.filter-panel select,
 #admin-picker select {
     font: inherit;
     color: var(--text);

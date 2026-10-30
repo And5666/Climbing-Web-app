@@ -2,12 +2,25 @@
 
 ## Unreleased
 
-- New Guidebook theme pair (light "Guidebook" and dark "Guidebook
-  Night"), modelled on the climbelo printed-logbook look: cream or
-  warm near-black stock, ink rules, serif headlines, mono labels and
-  the red mark. Themes restyle every page, preview with
-  `?theme=guidebook` (or `guidebook-night`), and the phone status bar
-  colour now follows the active theme.
+- Map: the vertical FILTERS tab is gone. A 44px floating Filters
+  button opens a bottom sheet with the set/grade/search controls; on
+  wide screens the same panel is a static sidebar with a climb list.
+  A Fit wall control restores the default view, and the map's
+  scale/pan survives a filter reload.
+- Leaderboard: Main Wall / The Cave tabs show one wall at a time,
+  remember the last choice and keep the shared URL in step.
+- A theme picker is now available to logged-out visitors from the
+  nav; it and the profile grid share the same saved choice.
+- PWA safe-area support: `viewport-fit=cover` and notch-aware nav
+  padding.
+- New Notebook theme pair (light "Notebook" and dark "Notebook
+  Night", ids `notebook` / `notebook-night`), modelled on the climbelo
+  printed-logbook look: cream or warm near-black stock, ink rules,
+  serif headlines, mono labels and the red mark. Themes restyle every
+  page, preview with `?theme=notebook` (or `notebook-night`), and the
+  phone status bar colour now follows the active theme. The old
+  `guidebook` / `guidebook-night` ids remain aliases and are migrated
+  in local storage.
 - Phone nav fits again: link icons are hidden under 600px so "News"
   is no longer clipped, and staff reach Admin tools from their profile
   instead of a fifth nav item.

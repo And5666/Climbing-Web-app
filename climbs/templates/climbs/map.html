@@ -2,16 +2,24 @@
 {% load static %}
 
 {% block content %}
-    {% if has_sets %}<details id="set-switcher">
-        <summary><span class="set-tab-text">Filters</span></summary>
+<div class="map-layout">
+    {% if has_sets %}
+    <aside id="filter-panel" class="filter-panel" role="dialog" aria-modal="false" aria-labelledby="filter-title">
+        <div class="filter-head">
+            <h2 id="filter-title">Filters</h2>
+            <div class="filter-head-actions">
+                <button type="button" class="btn btn-sm filter-done" data-close-filter>Done</button>
+                <button type="button" class="filter-x" data-close-filter aria-label="Close filters">×</button>
+            </div>
+        </div>
         <div class="set-panel">
             <p class="set-current">{% for w in walls %}{{ w.wall_display }}: {% if w.selected %}{{ w.selected.label }}{% else %}—{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
-            <form method="get" action="{% url 'climbs:map' %}">
+            <form method="get" action="{% url 'climbs:map' %}" id="map-filter-form">
                 {% for w in walls %}
                     <label>{{ w.wall_display }}
-                        <select name="{{ w.wall }}_set" onchange="this.form.submit()">
+                        <select name="{{ w.wall }}_set" data-set-select>
                             {% for s in w.sets %}
-                                <option value="{{ s.id }}"{% if w.selected and s.id == w.selected.id %} selected{% endif %}>{{ s.label }}{% if w.active and s.id == w.active.id %} · current{% endif %}</option>
+                                <option value="{{ s.id }}"{% if w.selected and s.id == w.selected.id %} selected{% endif %}{% if w.active and s.id == w.active.id %} data-current="1"{% endif %}>{{ s.label }}{% if w.active and s.id == w.active.id %} · current{% endif %}</option>
                             {% endfor %}
                         </select>
                     </label>
@@ -32,33 +40,59 @@
                     {% endfor %}
                 </select>
             </label>
+            <div class="climb-search">
+                <input type="search" id="climb-search" placeholder="Search climbs" aria-label="Search climbs" autocomplete="off">
+                <button type="button" class="climb-search-clear" id="climb-search-clear" aria-label="Clear search" hidden>×</button>
+            </div>
+            <ul class="climb-results" id="climb-search-results" aria-label="Matching climbs" aria-live="polite"></ul>
+            <p class="muted" id="climb-search-empty" hidden>No climbs match.</p>
+            <div class="climb-list-section">
+                <h3 class="climb-list-title">Climbs on this wall</h3>
+                <ul class="climb-results climb-list" id="climb-list" aria-label="Climbs on this wall"></ul>
+            </div>
             {% if archived_any %}
                 <p class="muted">Viewing an archived set — logging, rating and voting are off. <a href="{% url 'climbs:map' %}">Back to current</a></p>
             {% endif %}
         </div>
-    </details>{% endif %}
-    <div id="map-viewport">
-        <div id="map-stack">
-            <div id="map-content">
-                {% include "climbs/_wall.html" %}
+    </aside>
+    {% endif %}
+    <div class="map-stage">
+        {% if has_sets %}
+        <button type="button" class="map-filter-btn" id="filter-open" aria-label="Filters" aria-haspopup="dialog" aria-controls="filter-panel" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>
+            <span>Filters</span>
+            <span class="filter-badge" id="filter-badge" hidden>0</span>
+        </button>
+        {% endif %}
+        <button type="button" class="map-fit-btn" id="fit-wall" aria-label="Fit wall" title="Fit wall">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"/></svg>
+            <span>Fit wall</span>
+        </button>
+        <div id="map-viewport">
+            <div id="map-stack">
+                <div id="map-content">
+                    {% include "climbs/_wall.html" %}
 
-                <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
-                     xmlns="http://www.w3.org/2000/svg">
-                    {% for climb in climbs %}
-                        <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}" data-name="{{ climb.name|escape }}" data-colour="{{ climb.colour }}">
-                            <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
-                                    fill="{{ climb.colour }}" stroke="#ffffff" stroke-width="1.2"/>
-                            <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
-                                  text-anchor="middle" dominant-baseline="central"
-                                  fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.display_grade|default:"?" }}</text>
-                        </g>
-                    {% endfor %}
-                </svg>
+                    <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
+                         xmlns="http://www.w3.org/2000/svg">
+                        {% for climb in climbs %}
+                            <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}" data-name="{{ climb.name|escape }}" data-colour="{{ climb.colour }}">
+                                <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
+                                        fill="{{ climb.colour }}" stroke="#ffffff" stroke-width="1.2"/>
+                                <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
+                                      text-anchor="middle" dominant-baseline="central"
+                                      fill="#fff" stroke="rgba(0,0,0,0.5)" stroke-width="0.8" paint-order="stroke" font-size="7" font-weight="700">{{ climb.display_grade|default:"?" }}</text>
+                            </g>
+                        {% endfor %}
+                    </svg>
+                </div>
             </div>
         </div>
     </div>
+</div>
+{% if has_sets %}<div class="filter-scrim" id="filter-scrim" hidden></div>{% endif %}
 
-    <div id="climb-popup" aria-hidden="true">
+<div id="climb-popup" aria-hidden="true">
         <div class="sheet-scrim" data-close></div>
         <section class="sheet" role="dialog" aria-modal="true" aria-label="Climb details">
             <div class="grabber" id="sheet-grabber" title="Drag down to close">
@@ -88,8 +122,13 @@
             viewport: document.getElementById('map-viewport'),
             content: document.getElementById('map-content'),
             onTransform: paintMarkers,
-        }) : {getScale: () => 1, centerOn: () => {}};
+        }) : {getScale: () => 1, centerOn: () => {}, reset: () => {},
+             getState: () => null, setView: () => {}};
         paintMarkers(mapZoom.getScale());
+        const fitWall = document.getElementById('fit-wall');
+        if (fitWall) {
+            fitWall.addEventListener('click', () => mapZoom.reset());
+        }
         function frontMarker(m) {
             if (window.WallView) window.WallView.bringToFront(m);
         }
@@ -466,59 +505,63 @@
             }
         }
 
-        // Tapping back onto the map dismisses the open Sets panel,
-        // so it never needs a manual close. The summary toggle that
-        // opens it sits outside the viewport, so it can't trip this.
-        (() => {
-            const switcher = document.getElementById('set-switcher');
-            const viewport = document.getElementById('map-viewport');
-            if (!switcher || !viewport) return;
-            viewport.addEventListener('pointerdown', () => {
-                switcher.open = false;
-            });
-        })();
-
-        // Edge slider: pull the Sets tab right to drag it open, push
-        // it left to slide it shut. A real drag never toggles the
-        // tab — only a clean tap does.
-        (() => {
-            const switcher = document.getElementById('set-switcher');
-            if (!switcher) return;
-            const tab = switcher.querySelector('summary');
-            const panel = switcher.querySelector('.set-panel');
-            if (!tab) return;
-            let startX = null, dragged = false;
-            const begin = (x) => { startX = x; dragged = false; };
-            const move = (x) => {
-                if (startX === null) return;
-                if (Math.abs(x - startX) > 12) {
-                    dragged = true;
-                    switcher.open = x > startX;
-                }
-            };
-            const end = () => { startX = null; };
-            tab.addEventListener('pointerdown', (e) => begin(e.clientX));
-            tab.addEventListener('pointermove', (e) => {
-                if (e.buttons) move(e.clientX);
-            });
-            tab.addEventListener('pointerup', end);
-            tab.addEventListener('pointercancel', end);
-            tab.addEventListener('click', (e) => {
-                if (dragged) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    dragged = false;
-                }
-            }, true);
-            if (panel) {
-                panel.addEventListener('pointerdown', (e) => begin(e.clientX));
-                panel.addEventListener('pointermove', (e) => {
-                    if (e.buttons) move(e.clientX);
-                });
-                panel.addEventListener('pointerup', end);
-                panel.addEventListener('pointercancel', end);
+        // Filter sheet / desktop sidebar. The markup is one panel:
+        // phones slide it up over the map, wide screens show it as a
+        // static sidebar. The floating button is hidden on desktop.
+        const filterPanel = document.getElementById('filter-panel');
+        const filterOpenBtn = document.getElementById('filter-open');
+        const filterScrim = document.getElementById('filter-scrim');
+        const filterBadge = document.getElementById('filter-badge');
+        function filterIsDesktop() {
+            return window.matchMedia &&
+                matchMedia('(min-width: 1000px)').matches;
+        }
+        function filterIsOpen() {
+            return !!filterPanel &&
+                (filterIsDesktop() ||
+                 document.body.classList.contains('filter-open'));
+        }
+        function openFilter(focus) {
+            if (!filterPanel || filterIsDesktop()) return;
+            document.body.classList.add('filter-open');
+            if (filterScrim) filterScrim.hidden = false;
+            filterPanel.setAttribute('aria-modal', 'true');
+            if (filterOpenBtn) {
+                filterOpenBtn.setAttribute('aria-expanded', 'true');
             }
-        })();
+            if (focus !== false) {
+                const target = document.getElementById('climb-search');
+                if (target) target.focus();
+            }
+        }
+        function closeFilter(returnFocus) {
+            document.body.classList.remove('filter-open');
+            if (filterScrim) filterScrim.hidden = true;
+            if (filterPanel) filterPanel.setAttribute('aria-modal', 'false');
+            if (filterOpenBtn) {
+                filterOpenBtn.setAttribute('aria-expanded', 'false');
+            }
+            if (returnFocus !== false && filterOpenBtn) filterOpenBtn.focus();
+        }
+        if (filterOpenBtn) {
+            filterOpenBtn.addEventListener('click', () => openFilter());
+        }
+        document.querySelectorAll('[data-close-filter]').forEach((btn) => {
+            btn.addEventListener('click', () => closeFilter());
+        });
+        if (filterScrim) {
+            filterScrim.addEventListener('click', () => closeFilter());
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && filterIsOpen()) closeFilter();
+        });
+        window.addEventListener('resize', () => {
+            if (filterIsDesktop()) {
+                document.body.classList.remove('filter-open');
+                if (filterScrim) filterScrim.hidden = true;
+                if (filterPanel) filterPanel.setAttribute('aria-modal', 'false');
+            }
+        });
 
         // Marker status: every climb always shows. The Show buttons
         // dim the other group instead of hiding it, and the grade
@@ -529,6 +572,7 @@
         const SENT_IDS = new Set([{% for id in sent_ids %}{{ id }}{% if not forloop.last %}, {% endif %}{% endfor %}]);
         const FILTER_KEY = 'summit-filter';
         const GRADE_KEY = 'summit-grade';
+        const VIEW_KEY = 'summit-map-view';
         let markerFilter = 'all';
         let gradeFilter = 'all';
         try {
@@ -537,6 +581,39 @@
             const savedGrade = localStorage.getItem(GRADE_KEY);
             if (savedGrade) gradeFilter = savedGrade;
         } catch (e) { /* private mode: stay on all */ }
+
+        // The view is saved against the wall/set selection, not the
+        // whole URL: a filter reload keeps the same selection key and
+        // restores scale/pan. A different selection starts fresh.
+        function selectionKey() {
+            return [...document.querySelectorAll('[data-set-select]')]
+                .map(s => s.name + '=' + s.value).join('&');
+        }
+        function saveMapView() {
+            const state = mapZoom.getState();
+            if (!state) return;
+            try {
+                sessionStorage.setItem(VIEW_KEY, JSON.stringify({
+                    key: selectionKey(),
+                    scale: state.scale, x: state.x, y: state.y,
+                    filterOpen: filterIsOpen(),
+                }));
+            } catch (e) { /* private mode: no restore */ }
+        }
+        function updateFilterBadge() {
+            if (!filterBadge) return;
+            let count = 0;
+            if (markerFilter !== 'all') count += 1;
+            if (gradeFilter !== 'all') count += 1;
+            document.querySelectorAll('[data-set-select]').forEach(sel => {
+                const opt = sel.options[sel.selectedIndex];
+                if (opt && opt.dataset.current !== '1') count += 1;
+            });
+            const search = document.getElementById('climb-search');
+            if (search && search.value.trim()) count += 1;
+            filterBadge.textContent = String(count);
+            filterBadge.hidden = count === 0;
+        }
         function applyMarkerFilter() {
             document.querySelectorAll('.climb-marker').forEach(m => {
                 const sent = SENT_IDS.has(parseInt(m.dataset.climbId, 10));
@@ -560,6 +637,7 @@
                 gradeFilter = 'all';
             }
             if (gradeSel) gradeSel.value = gradeFilter;
+            updateFilterBadge();
             try {
                 localStorage.setItem(FILTER_KEY, markerFilter);
                 localStorage.setItem(GRADE_KEY, gradeFilter);
@@ -571,11 +649,128 @@
                 applyMarkerFilter();
             });
         });
-        document.getElementById('grade-filter').addEventListener('change', (e) => {
-            gradeFilter = e.target.value;
-            applyMarkerFilter();
+        const gradeFilterEl = document.getElementById('grade-filter');
+        if (gradeFilterEl) {
+            gradeFilterEl.addEventListener('change', (e) => {
+                gradeFilter = e.target.value;
+                applyMarkerFilter();
+            });
+        }
+        document.querySelectorAll('[data-set-select]').forEach((sel) => {
+            sel.addEventListener('change', () => {
+                saveMapView();
+                if (sel.form) sel.form.submit();
+            });
         });
         applyMarkerFilter();
+
+        // Search climbs on the wall as the user types. Names match by
+        // case-insensitive substring; a query shaped like a grade
+        // (V4) also matches grades. Results carry name, grade and the
+        // tape colour dot; picking one centres the wall and opens it.
+        const searchInput = document.getElementById('climb-search');
+        const searchClear = document.getElementById('climb-search-clear');
+        const searchResults = document.getElementById('climb-search-results');
+        const searchEmpty = document.getElementById('climb-search-empty');
+        const climbList = document.getElementById('climb-list');
+        function resultButton(marker) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'climb-result';
+            const dot = document.createElement('span');
+            dot.className = 'colour-dot';
+            dot.style.background = marker.dataset.colour || '';
+            dot.setAttribute('aria-hidden', 'true');
+            const name = document.createElement('span');
+            name.className = 'climb-result-name';
+            name.textContent = marker.dataset.name || 'Unnamed climb';
+            const grade = document.createElement('span');
+            grade.className = 'climb-result-grade';
+            grade.textContent = marker.dataset.grade || '?';
+            btn.append(dot, name, grade);
+            btn.addEventListener('click', () => openSearchResult(marker));
+            return btn;
+        }
+        function renderSearchResults() {
+            if (!searchInput || !searchResults) return;
+            const query = searchInput.value.trim();
+            const needle = query.toLowerCase();
+            const looksGrade = /^v\d+$/i.test(query);
+            searchClear.hidden = !query;
+            searchResults.innerHTML = '';
+            if (!query) {
+                searchEmpty.hidden = true;
+                updateFilterBadge();
+                return;
+            }
+            const matches = [...document.querySelectorAll('.climb-marker')]
+                .filter(m => {
+                    const name = (m.dataset.name || '').toLowerCase();
+                    const grade = (m.dataset.grade || '').toLowerCase();
+                    return name.includes(needle) ||
+                        (looksGrade && grade.includes(needle));
+                })
+                .slice(0, 8);
+            matches.forEach((marker) => {
+                const li = document.createElement('li');
+                li.appendChild(resultButton(marker));
+                searchResults.appendChild(li);
+            });
+            searchEmpty.hidden = matches.length > 0;
+            updateFilterBadge();
+        }
+        function renderClimbList() {
+            if (!climbList) return;
+            climbList.innerHTML = '';
+            [...document.querySelectorAll('.climb-marker')].forEach((marker) => {
+                const li = document.createElement('li');
+                li.appendChild(resultButton(marker));
+                climbList.appendChild(li);
+            });
+        }
+        function openSearchResult(marker) {
+            // A hidden grade marker must come back before we centre it.
+            if (marker.style.display === 'none') {
+                markerFilter = 'all';
+                gradeFilter = 'all';
+                applyMarkerFilter();
+            }
+            closeFilter(false);
+            const dot = marker.querySelector('.climb-dot');
+            if (dot) {
+                mapZoom.centerOn(
+                    parseFloat(dot.getAttribute('cx')),
+                    parseFloat(dot.getAttribute('cy')),
+                    Math.max(mapZoom.getScale(), 3));
+            }
+            openClimb(marker.dataset.climbId);
+        }
+        if (searchInput) {
+            searchInput.addEventListener('input', renderSearchResults);
+        }
+        renderClimbList();
+        if (searchClear) {
+            searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                renderSearchResults();
+                searchInput.focus();
+            });
+        }
+
+        // Restore after the map has its real size. Same wall/set
+        // selection only; a deep link keeps its own centring.
+        (() => {
+            if (/[?&]climb=/.test(location.search)) return;
+            let saved = null;
+            try {
+                saved = JSON.parse(sessionStorage.getItem(VIEW_KEY) || 'null');
+            } catch (e) { /* private mode */ }
+            if (!saved || saved.key !== selectionKey()) return;
+            requestAnimationFrame(() => {
+                mapZoom.setView(saved.scale, saved.x, saved.y);
+                if (saved.filterOpen) openFilter(false);
+            });
+        })();
 
         // Deep link from the leaderboard stats: ?climb=<id> centers
         // that marker (content coordinates need no transform maths)

@@ -55,8 +55,8 @@
                 <button type="button" class="btn btn-md theme-btn" data-theme-set="clay" aria-pressed="false">Clay</button>
                 <button type="button" class="btn btn-md theme-btn" data-theme-set="modern" aria-pressed="false">Modern</button>
                 <button type="button" class="btn btn-md theme-btn" data-theme-set="midnight" aria-pressed="false">Midnight</button>
-                <button type="button" class="btn btn-md theme-btn" data-theme-set="guidebook" aria-pressed="false">Guidebook</button>
-                <button type="button" class="btn btn-md theme-btn" data-theme-set="guidebook-night" aria-pressed="false">Guidebook Night</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="notebook" aria-pressed="false">Notebook</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="notebook-night" aria-pressed="false">Notebook Night</button>
             </div>
         </div>
 
@@ -264,25 +264,6 @@
             });
         }
     })();
-</script>
-<script>
-    // Theme switch: attribute on <html> + localStorage, no reload needed.
-    document.querySelectorAll('[data-theme-set]').forEach((btn) => {
-        const paint = () => btn.setAttribute(
-            'aria-pressed',
-            document.documentElement.dataset.theme === btn.dataset.themeSet);
-        btn.addEventListener('click', () => {
-            document.documentElement.dataset.theme = btn.dataset.themeSet;
-            try {
-                localStorage.setItem('summit-theme', btn.dataset.themeSet);
-            } catch (e) { /* private mode: theme lasts this visit */ }
-            if (window.summitThemeColor) window.summitThemeColor();
-            document.querySelectorAll('[data-theme-set]').forEach((other) =>
-                other.setAttribute('aria-pressed',
-                    other.dataset.themeSet === btn.dataset.themeSet));
-        });
-        paint();
-    });
 </script>
 <script>
     // Downscale the avatar on the phone (max 256px JPEG) so uploads stay

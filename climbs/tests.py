@@ -780,14 +780,13 @@ class LeaderboardTests(ClimbTestMixin, TestCase):
         self.assertTrue(new_set.is_active)
         self.assertEqual(ClimbSet.active("cave").id, new_set.id)
 
-    def test_map_hides_set_switcher_with_no_sets(self):
-        # No sets means no Sets panel element; the tap-to-dismiss
-        # script still ships (it guards for the missing element).
+    def test_map_hides_filters_with_no_sets(self):
+        # No sets means no filter panel or floating button.
         ClimbSet.objects.all().delete()
         response = self.client.get(reverse("climbs:map"))
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'id="set-switcher"')
-        self.assertContains(response, "switcher.open = false")
+        self.assertNotContains(response, 'id="filter-panel"')
+        self.assertNotContains(response, 'id="filter-open"')
 
     def test_nav_and_title_say_leaderboard(self):
         response = self.client.get(reverse("climbs:leaderboard"))
@@ -1740,13 +1739,14 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         # Grade labels stay on at every zoom level (no zoom-out gate).
         self.assertNotContains(response, ">= 1.3")
 
-    def test_map_has_watermark_and_dismisses_sets(self):
-        # Every page carries the quiet summit_map mark, and tapping
-        # the map closes the open Sets panel without a manual toggle.
+    def test_map_has_watermark_and_closes_filters(self):
+        # Every page carries the quiet summit_map mark, and the filter
+        # sheet closes from its scrim, X, Done button or Escape.
         response = self.client.get(reverse("climbs:map"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'class="watermark"')
-        self.assertContains(response, "switcher.open = false")
+        self.assertContains(response, "filterScrim.addEventListener")
+        self.assertContains(response, "data-close-filter")
 
     def test_tag_bands_cover_every_tag(self):
         # Pills and graph bars wear the climb's own tag: seed one
@@ -1889,20 +1889,25 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         block = css.split(".admin-topbar a")[1].split("}")[0]
         self.assertIn("text-decoration: none", block)
 
-    def test_set_switcher_is_a_side_panel(self):
+    def test_filter_panel_and_search_replace_the_vertical_tab(self):
         response = self.client.get(reverse("climbs:map"))
-        self.assertContains(response, 'id="set-switcher"')
-        self.assertContains(response, "set-panel")
-        self.assertContains(response, "set-tab-text")
-        # The tab pulls across: drag opens/shuts, a clean tap toggles.
-        self.assertContains(response, "Edge slider")
-        self.assertContains(response, "switcher.open = x > startX")
+        self.assertContains(response, 'id="filter-panel"')
+        self.assertContains(response, 'class="map-filter-btn"')
+        self.assertContains(response, 'aria-label="Filters"')
+        self.assertContains(response, 'id="climb-search"')
+        self.assertContains(response, "Search climbs")
+        self.assertContains(response, 'id="climb-list"')
+        self.assertContains(response, "Climbs on this wall")
+        self.assertContains(response, 'id="fit-wall"')
+        self.assertNotContains(response, "set-switcher")
+        self.assertNotContains(response, "set-tab-text")
         css_path = finders.find("climbs/style.css")
         with open(css_path) as f:
             css = f.read()
-        panel = css.split("#set-switcher {")[1].split("}")[0]
+        panel = css.split(".filter-panel {")[1].split("}")[0]
         self.assertIn("position: fixed", panel)
-        self.assertIn("left: 0", panel)
+        self.assertIn("bottom: 0", panel)
+        self.assertIn("@media (min-width: 1000px)", css)
 
     def test_sheet_copy_is_trimmed(self):
         response = self.client.get(reverse("climbs:map"))
@@ -1963,9 +1968,9 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         # Five sharp themes: abyss (deep trench cyan), blueprint,
         # ember (amber), forest (green serif), clay (warm paper serif) —
         # plus modern (soft light), midnight (soft dark) and the
-        # guidebook pair (cream paper and warm near-black, serif).
+        # notebook pair (cream paper and warm near-black, serif).
         for theme in ("abyss", "blueprint", "ember", "forest", "clay",
-                      "modern", "midnight", "guidebook", "guidebook-night"):
+                      "modern", "midnight", "notebook", "notebook-night"):
             self.assertIn(f'[data-theme="{theme}"]', css)
         # The modern pair is soft: smooth sans type, rounded corners.
         modern = css.split('[data-theme="modern"]')[1].split("}")[0]
@@ -2035,7 +2040,7 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertNotContains(response, "Math.min(99")
         self.assertContains(response, "data-dir")
         self.assertContains(response, "p-more-comments")
-        self.assertContains(response, "set-switcher")
+        self.assertContains(response, "filter-panel")
 
     def test_pages_keep_their_working_zoom(self):
         # The main map zooms through the wall-view.js module: single
@@ -3647,3 +3652,87 @@ class LeaderboardShareTests(ClimbTestMixin, TestCase):
         boards = html.index("board-columns")
         self.assertLess(head, trigger)
         self.assertLess(trigger, boards)
+
+
+class MobileThemeUxTests(ClimbTestMixin, TestCase):
+    def test_notebook_theme_ids_and_old_aliases(self):
+        for theme in ("notebook", "notebook-night"):
+            with self.subTest(theme=theme):
+                response = self.client.get(
+                    reverse("climbs:map") + f"?theme={theme}")
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, f"'{theme}'")
+                self.assertContains(
+                    response, f'data-theme-set="{theme}"')
+        # Old ids remain accepted by the bootstrap and migrate to
+        # the new notebook ids.
+        response = self.client.get(
+            reverse("climbs:map") + "?theme=guidebook")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "guidebook: 'notebook'")
+        self.assertContains(response, "'guidebook-night': 'notebook-night'")
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        self.assertIn('[data-theme="notebook"]', css)
+        self.assertIn('[data-theme="notebook-night"]', css)
+        self.assertNotIn('[data-theme="guidebook"]', css)
+
+    def test_logged_out_pages_have_theme_control(self):
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(response, 'id="theme-open"')
+        self.assertContains(response, 'id="theme-picker"')
+        self.assertContains(response, 'data-theme-set="notebook"')
+        self.assertContains(response, 'data-theme-set="notebook-night"')
+        self.assertContains(response, "Change theme")
+
+    def test_leaderboard_wall_tabs_default_and_explicit_wall(self):
+        response = self.client.get(reverse("climbs:leaderboard"))
+        self.assertContains(response, 'role="tablist"')
+        self.assertContains(response, 'id="wall-tab-main"')
+        self.assertContains(response, 'id="wall-tab-cave"')
+        self.assertRegex(
+            response.content.decode(),
+            r'id="wall-tab-main"[^>]*aria-selected="true"')
+        self.assertRegex(
+            response.content.decode(),
+            r'id="wall-tab-cave"[^>]*aria-selected="false"')
+
+        response = self.client.get(
+            reverse("climbs:leaderboard") + "?wall=cave")
+        self.assertRegex(
+            response.content.decode(),
+            r'id="wall-tab-cave"[^>]*aria-selected="true"')
+        self.assertRegex(
+            response.content.decode(),
+            r'id="wall-tab-main"[^>]*aria-selected="false"')
+        self.assertEqual(response.context["selected_wall"], "cave")
+
+    def test_wall_tabs_remember_and_update_the_url(self):
+        response = self.client.get(reverse("climbs:leaderboard"))
+        content = response.content.decode()
+        for token in ("summit-board-wall", "history.replaceState",
+                      "data-wall-tab", "aria-selected"):
+            self.assertIn(token, content)
+
+    def test_pwa_safe_area_and_viewport_fit(self):
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(response, "viewport-fit=cover")
+        css_path = finders.find("climbs/style.css")
+        with open(css_path) as f:
+            css = f.read()
+        self.assertIn("env(safe-area-inset-top", css)
+        self.assertIn("padding-top: calc(0.5rem + env(safe-area-inset-top",
+                      css)
+
+    def test_map_view_persists_across_filter_reload(self):
+        response = self.client.get(reverse("climbs:map"))
+        content = response.content.decode()
+        for token in ("summit-map-view", "sessionStorage",
+                      "setView", "saveMapView", "selectionKey"):
+            self.assertIn(token, content)
+        module = finders.find("climbs/wall-view.js")
+        with open(module) as f:
+            js = f.read()
+        self.assertIn("reset: reset", js)
+        self.assertIn("setView: setView", js)
