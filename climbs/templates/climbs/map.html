@@ -13,17 +13,6 @@
         </div>
         <div class="set-panel">
             <p class="set-current">{% for w in walls %}{{ w.wall_display }}: {% if w.selected %}{{ w.selected.label }}{% else %}—{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
-            <form method="get" action="{% url 'climbs:map' %}" id="map-filter-form">
-                {% for w in walls %}
-                    <label>{{ w.wall_display }}
-                        <select name="{{ w.wall }}_set" data-set-select>
-                            {% for s in w.sets %}
-                                <option value="{{ s.id }}"{% if w.selected and s.id == w.selected.id %} selected{% endif %}{% if w.active and s.id == w.active.id %} data-current="1"{% endif %}>{{ s.label }}{% if w.active and s.id == w.active.id %} · current{% endif %}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                {% endfor %}
-            </form>
             <div class="marker-filter" role="group" aria-label="Show climbs">
                 <span class="marker-filter-label">Show</span>
                 <button type="button" data-marker-filter="all" aria-pressed="true">All</button>
@@ -52,6 +41,18 @@
             {% if archived_any %}
                 <p class="muted">Viewing an archived set — logging, rating and voting are off. <a href="{% url 'climbs:map' %}">Back to current</a></p>
             {% endif %}
+            <form method="get" action="{% url 'climbs:map' %}" id="map-filter-form" class="set-filters">
+                <h3 class="climb-list-title">Wall set</h3>
+                {% for w in walls %}
+                    <label>{{ w.wall_display }}
+                        <select name="{{ w.wall }}_set" data-set-select>
+                            {% for s in w.sets %}
+                                <option value="{{ s.id }}"{% if w.selected and s.id == w.selected.id %} selected{% endif %}{% if w.active and s.id == w.active.id %} data-current="1"{% endif %}>{{ s.label }}{% if w.active and s.id == w.active.id %} · current{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                {% endfor %}
+            </form>
         </div>
     </aside>
     {% endif %}
@@ -65,7 +66,6 @@
         {% endif %}
         <button type="button" class="map-fit-btn" id="fit-wall" aria-label="Fit wall" title="Fit wall">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"/></svg>
-            <span>Fit wall</span>
         </button>
         <div id="map-viewport">
             <div id="map-stack">

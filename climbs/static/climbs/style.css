@@ -674,31 +674,35 @@ nav a svg {
         gap: 0.5rem;
     }
 
+    .brand {
+        display: none;
+    }
+
     .nav-name {
         display: none;
     }
 }
 
-/* The base nav rules above are declared after the first phone block,
-   so repeat the compact sizing here where it actually wins. This is
-   what keeps Map, Leaderboard, News, the theme button and Sign in on
-   one row at 390px without sideways scrolling. */
+/* The pre-30 October phone sizing: icons and labels at their original
+   size. The bar scrolls sideways when the links do not fit instead of
+   shrinking the text. */
 @media (max-width: 600px) {
     nav {
-        gap: 0.3rem;
+        gap: 0.35rem;
         padding: 0.45rem 0.5rem;
         padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
     }
 
     .brand {
-        display: none;
+        font-size: 0.78rem;
+        margin-right: 0;
     }
 
     .nav-links {
         min-width: 0;
         overflow-x: auto;
         scrollbar-width: none;
-        gap: 0.14rem;
+        gap: 0.3rem;
     }
 
     .nav-links::-webkit-scrollbar {
@@ -706,12 +710,13 @@ nav a svg {
     }
 
     nav a {
-        font-size: 0.62rem;
-        padding: 0.45rem 0.28rem;
-        gap: 0.26rem;
+        font-size: 0.68rem;
+        padding: 0.5rem 0.5rem;
         white-space: nowrap;
     }
 
+    /* Admin stays on the profile on phones: the old-size links plus
+       the theme button cannot also carry a fifth item. */
     [data-nav-admin] {
         display: none;
     }
@@ -719,7 +724,7 @@ nav a svg {
     .nav-user {
         flex-shrink: 0;
         gap: 0.4rem;
-        padding-left: 0.5rem;
+        padding-left: 0.4rem;
     }
 
     .nav-profile {
@@ -2785,6 +2790,9 @@ ul.plain li {
 .map-fit-btn {
     right: 0.7rem;
     bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));
+    /* Icon-only: a 44px square, same height as the Filters button. */
+    width: 44px;
+    padding: 0;
 }
 
 .map-filter-btn svg,
@@ -2907,6 +2915,18 @@ body.filter-open .filter-panel {
     gap: 0.6rem;
     padding: 0;
     border-top: none;
+}
+
+/* Wall-set selectors sit at the bottom of the sheet/sidebar: the
+   show/grade/search controls are the frequent ones. */
+.filter-panel .set-filters {
+    margin-top: 0.2rem;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.filter-panel .set-filters .climb-list-title {
+    margin-top: 0;
 }
 
 .filter-panel .set-panel label {
