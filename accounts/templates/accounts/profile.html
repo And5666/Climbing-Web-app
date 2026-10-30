@@ -21,6 +21,9 @@
             <div><span class="stat-num">{{ total_points }}</span><span class="stat-label">pts</span></div>
         </div>
         <p class="stats-link"><a class="btn btn-md btn-secondary" href="{% url 'accounts:stats' %}">Full stats</a></p>
+        {% if user.is_staff %}
+            <p class="stats-link"><a class="btn btn-md btn-secondary" href="{% url 'climbs:climb-admin' %}">Admin tools</a></p>
+        {% endif %}
 
         <div class="sheet-section">
             <h3>Leaderboard</h3>
@@ -52,6 +55,8 @@
                 <button type="button" class="btn btn-md theme-btn" data-theme-set="clay" aria-pressed="false">Clay</button>
                 <button type="button" class="btn btn-md theme-btn" data-theme-set="modern" aria-pressed="false">Modern</button>
                 <button type="button" class="btn btn-md theme-btn" data-theme-set="midnight" aria-pressed="false">Midnight</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="guidebook" aria-pressed="false">Guidebook</button>
+                <button type="button" class="btn btn-md theme-btn" data-theme-set="guidebook-night" aria-pressed="false">Guidebook Night</button>
             </div>
         </div>
 
@@ -271,6 +276,7 @@
             try {
                 localStorage.setItem('summit-theme', btn.dataset.themeSet);
             } catch (e) { /* private mode: theme lasts this visit */ }
+            if (window.summitThemeColor) window.summitThemeColor();
             document.querySelectorAll('[data-theme-set]').forEach((other) =>
                 other.setAttribute('aria-pressed',
                     other.dataset.themeSet === btn.dataset.themeSet));

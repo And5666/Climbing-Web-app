@@ -276,6 +276,85 @@
     --wall-line-dim: #99a0a8;
 }
 
+/* Guidebook: the printed guidebook look — cream paper, ink rules,
+   serif headlines and mono labels. Light counterpart to Guidebook
+   Night, both borrowed from the climbelo logbook aesthetic. */
+:root[data-theme="guidebook"] {
+    color-scheme: light;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: ui-serif, Georgia, "Times New Roman", serif;
+
+    --bg: #f3f0e9;
+    --surface: #fbf9f4;
+    --surface-2: #ece6da;
+    --border: #14130f;
+    --border-soft: rgba(20, 19, 15, 0.18);
+    --text: #14130f;
+    --muted: #6f6a60;
+    --accent: #d93a00;
+    --accent-ink: #ffffff;
+    --link: #2f5f9e;
+    --sand: #d93a00;
+    --danger: #b3261e;
+    --danger-ink: #fff8f3;
+    --ok: #2f6b3f;
+    --err: #b3261e;
+    --star: #b07d12;
+    --star-dim: #cfc6b4;
+    --r-sm: 2px;
+    --r-btn: 0px;
+    --r-md: 2px;
+    --bw: 1px;
+    --shadow: 0 1px 0 rgba(20, 19, 15, 0.12);
+    --heading-transform: none;
+    --heading-spacing: 0.005em;
+    --me-bg: #e6dfd1;
+    --dot-radius: 2px;
+    --wall-wash: #8a8578;
+    --wall-panel: #c9c1b2;
+    --wall-line: #14130f;
+    --wall-line-dim: #8a8578;
+}
+
+/* Guidebook Night: the same printed page after dark — warm near-black
+   stock, paper-coloured ink, the red accent kept for the mark. */
+:root[data-theme="guidebook-night"] {
+    color-scheme: dark;
+    --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-display: ui-serif, Georgia, "Times New Roman", serif;
+
+    --bg: #14130f;
+    --surface: #1d1b16;
+    --surface-2: #26231c;
+    --border: #8a8478;
+    --border-soft: #322e26;
+    --text: #f3f0e9;
+    --muted: #a8a294;
+    --accent: #ff5a1f;
+    --accent-ink: #1a0d06;
+    --link: #a8c4ea;
+    --sand: #e8a087;
+    --danger: #e2694f;
+    --danger-ink: #1a0d06;
+    --ok: #8fbf9a;
+    --err: #e2694f;
+    --star: #e0b04a;
+    --star-dim: #4a453b;
+    --r-sm: 2px;
+    --r-btn: 0px;
+    --r-md: 2px;
+    --bw: 1px;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+    --heading-transform: none;
+    --heading-spacing: 0.005em;
+    --me-bg: #2b2720;
+    --dot-radius: 2px;
+    --wall-wash: #7a7466;
+    --wall-panel: #4a453b;
+    --wall-line: #f3f0e9;
+    --wall-line-dim: #a8a294;
+}
+
 /* --- Reset / base --- */
 * {
     box-sizing: border-box;
@@ -351,14 +430,44 @@ h1, h2, h3, h4 {
     background-image: url("/static/climbs/bg-grid-clay.jpg");
 }
 
+/* Guidebook themes sit on flat paper stock with the faintest
+   printed dot grid, not a photographic tile. */
+:root[data-theme="guidebook"] .bg-fixed {
+    background-color: var(--bg);
+    background-image: radial-gradient(rgba(20, 19, 15, 0.10) 1px, transparent 1.1px);
+    background-size: 18px 18px;
+}
+
+:root[data-theme="guidebook-night"] .bg-fixed {
+    background-color: var(--bg);
+    background-image: radial-gradient(rgba(243, 240, 233, 0.07) 1px, transparent 1.1px);
+    background-size: 18px 18px;
+}
+
 /* Serif themes (forest, clay) read as book pages, not terminals:
    tracked-out uppercase in a serif looks gappy, so pull the
    letterspacing back in on headings, nav, brand and buttons. */
 :root[data-theme="forest"] :is(.card h3, .boards h2, .board h3,
     .login-box h2, .auth-form h2, .brand, nav a, .btn),
 :root[data-theme="clay"] :is(.card h3, .boards h2, .board h3,
+    .login-box h2, .auth-form h2, .brand, nav a, .btn),
+:root[data-theme="guidebook"] :is(.card h3, .boards h2, .board h3,
+    .login-box h2, .auth-form h2, .brand, nav a, .btn),
+:root[data-theme="guidebook-night"] :is(.card h3, .boards h2, .board h3,
     .login-box h2, .auth-form h2, .brand, nav a, .btn) {
     letter-spacing: 0.03em;
+}
+
+/* Guidebook keeps the wordmark serif and the nav sans, but switches
+   the working UI (buttons, table labels) to mono, like a logbook. */
+:root[data-theme="guidebook"] :is(.btn, .theme-btn, .stat-label, th, .chip, .tag),
+:root[data-theme="guidebook-night"] :is(.btn, .theme-btn, .stat-label, th, .chip, .tag) {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="guidebook"] .brand,
+:root[data-theme="guidebook-night"] .brand {
+    font-family: var(--font-display);
 }
 
 /* --- Nav --- */
@@ -403,8 +512,26 @@ nav {
 
     nav a {
         font-size: 0.68rem;
-        padding: 0.5rem 0.55rem;
+        padding: 0.5rem 0.5rem;
         white-space: nowrap;
+    }
+
+    /* Four items plus the account chip do not fit beside each other
+       at 390px with icons in tow. Drop the icons on phones: the
+       labels are short and the whole bar stays on one row without
+       hiding "News" behind a sideways scroll. */
+    nav a svg {
+        display: none;
+    }
+
+    .nav-links {
+        gap: 0.3rem;
+    }
+
+    /* Admin lives on the profile on phones: five items never fit,
+       and the wall editor needs a wider screen anyway. */
+    [data-nav-admin] {
+        display: none;
     }
 
     .nav-user {
@@ -860,6 +987,15 @@ nav a svg {
 .theme-toggle .theme-btn {
     flex: 1 1 28%;
     margin-top: 0;
+    /* Neutral until chosen: the accent fill marks the active theme,
+       instead of every button shouting in the accent colour. */
+    background: var(--surface-2);
+    color: var(--text);
+    border-color: var(--border-soft);
+}
+
+.theme-toggle .theme-btn:hover {
+    border-color: var(--accent);
 }
 
 .theme-toggle .theme-btn[aria-pressed="true"] {
@@ -3013,6 +3149,16 @@ ul.plain li {
    sideways scroll on narrow phones. */
 .board .user-chip {
     max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The chip is a flex row (avatar + name): the name needs its own
+   ellipsis box, or a long climber name is clipped mid-letter by the
+   table cell instead of ending in an ellipsis. */
+.user-chip-name {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

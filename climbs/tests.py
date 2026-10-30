@@ -1962,9 +1962,10 @@ class AdminApiTests(ClimbTestMixin, TestCase):
             css = f.read()
         # Five sharp themes: abyss (deep trench cyan), blueprint,
         # ember (amber), forest (green serif), clay (warm paper serif) —
-        # plus modern (soft light) and midnight (soft dark).
+        # plus modern (soft light), midnight (soft dark) and the
+        # guidebook pair (cream paper and warm near-black, serif).
         for theme in ("abyss", "blueprint", "ember", "forest", "clay",
-                      "modern", "midnight"):
+                      "modern", "midnight", "guidebook", "guidebook-night"):
             self.assertIn(f'[data-theme="{theme}"]', css)
         # The modern pair is soft: smooth sans type, rounded corners.
         modern = css.split('[data-theme="modern"]')[1].split("}")[0]
@@ -2145,7 +2146,7 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertIn("stroke: var(--wall-line-dim)", css)
         for var in ("--wall-wash:", "--wall-panel:", "--wall-line:",
                     "--wall-line-dim:"):
-            self.assertEqual(css.count(var), 7, var)
+            self.assertEqual(css.count(var), 9, var)
         self.assertEqual(css.count("--wall-edge:"), 1)
         self.assertEqual(css.count("--wall-feature:"), 1)
         self.assertIn("--wall-edge: 4.5", css)

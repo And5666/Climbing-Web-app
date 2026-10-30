@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- New Guidebook theme pair (light "Guidebook" and dark "Guidebook
+  Night"), modelled on the climbelo printed-logbook look: cream or
+  warm near-black stock, ink rules, serif headlines, mono labels and
+  the red mark. Themes restyle every page, preview with
+  `?theme=guidebook` (or `guidebook-night`), and the phone status bar
+  colour now follows the active theme.
+- Phone nav fits again: link icons are hidden under 600px so "News"
+  is no longer clipped, and staff reach Admin tools from their profile
+  instead of a fifth nav item.
+- Theme picker buttons are neutral until selected (the accent fill now
+  marks the active theme), instead of every option looking chosen.
 - App icon corners filled (full-bleed navy, no more white borders
   under the OS mask), PWA set regenerated, and the app is named
   "Summit Map" everywhere (manifest short name, iOS web-app title,
