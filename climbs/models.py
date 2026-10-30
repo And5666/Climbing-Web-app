@@ -27,6 +27,10 @@ TAG_GRADE_NUMBERS = {
     'mystery': tuple(range(0, 11)),
 }
 
+# Mystery climbs stay hidden for a week, then take the lower tag when
+# their grade sits on the edge of two circuits (V4 -> green, not blue).
+MYSTERY_REVEAL_DAYS = 7
+
 GRADES_BY_TAG = {
     tag: [f'V{n}' for n in numbers]
     for tag, numbers in TAG_GRADE_NUMBERS.items()
@@ -48,6 +52,17 @@ def grades_for_tag(tag):
 def tag_supports_grade(tag, grade):
     """True when a climb may wear `tag` at `grade`."""
     return grade in GRADES_BY_TAG.get(tag, [])
+
+
+def tag_for_grade(grade):
+    """The circuit tag a revealed grade belongs to.
+
+    A grade can sit in two bands (V4 is green and blue). The lower
+    band wins, so V4 -> green, V1 -> white, V2 -> black, V5 -> blue.
+    Returns None for an unknown grade.
+    """
+    tags = TAGS_BY_GRADE.get(grade) or []
+    return tags[0] if tags else None
 
 
 def grade_number(grade):

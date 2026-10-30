@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Mystery climbs reveal their stored grade after seven days, on the
+  next map/leaderboard/climb-detail load. A grade that overlaps two
+  circuit bands takes the lower tag (V4 -> green, V1 -> white), and
+  every ascent on the climb is re-scored from its tries and the new
+  tag. Manual grade/tag corrections re-score the climb too.
 - Map: the vertical FILTERS tab is gone. A 44px floating Filters
   button opens a bottom sheet with the set/grade/search controls; on
   wide screens the same panel is a static sidebar with a climb list.
@@ -21,9 +26,8 @@
   phone status bar colour now follows the active theme. The old
   `guidebook` / `guidebook-night` ids remain aliases and are migrated
   in local storage.
-- Phone nav fits again: link icons are hidden under 600px so "News"
-  is no longer clipped, and staff reach Admin tools from their profile
-  instead of a fifth nav item.
+- Phone nav keeps its icons and original-size labels; staff reach
+  Admin tools from their profile instead of a fifth nav item.
 - Theme picker buttons are neutral until selected (the accent fill now
   marks the active theme), instead of every option looking chosen.
 - App icon corners filled (full-bleed navy, no more white borders

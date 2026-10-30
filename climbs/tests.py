@@ -1,13 +1,23 @@
 import json
 import re
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
-from .models import Ascent, Climb, ClimbSet, Comment, NewsPost
+from .models import (
+    Ascent,
+    Climb,
+    ClimbSet,
+    Comment,
+    NewsPost,
+    tag_for_grade,
+)
 from .scoring import MYSTERY_FIXED_POINTS, calculate_points
+from .services import reveal_due_mystery_climbs
 
 User = get_user_model()
 
@@ -3769,3 +3779,101 @@ class MobileThemeUxTests(ClimbTestMixin, TestCase):
             js = f.read()
         self.assertIn("reset: reset", js)
         self.assertIn("setView: setView", js)
+
+
+class MysteryRevealTests(ClimbTestMixin, TestCase):
+    def backdate(self, climb, days):
+        Climb.objects.filter(pk=climb.pk).update(
+            date_set=timezone.localdate() - timedelta(days=days))
+        climb.refresh_from_db()
+
+    def test_edge_grades_take_the_lower_tag(self):
+        self.assertEqual(tag_for_grade("V0"), "white")
+        self.assertEqual(tag_for_grade("V1"), "white")
+        self.assertEqual(tag_for_grade("V2"), "black")
+        self.assertEqual(tag_for_grade("V3"), "red")
+        self.assertEqual(tag_for_grade("V4"), "green")
+        self.assertEqual(tag_for_grade("V5"), "blue")
+        self.assertEqual(tag_for_grade("V6"), "yellow")
+        self.assertEqual(tag_for_grade("V7"), "orange")
+        self.assertEqual(tag_for_grade("V8"), "project")
+        self.assertIsNone(tag_for_grade("?"))
+
+    def test_mystery_reveals_after_a_week_and_rescores_ascents(self):
+        climb = self.make_climb(grade="V4", tag="mystery")
+        self.backdate(climb, 8)
+        ascent = climb.ascents.create(
+            user=self.make_user("mystery-sender"), tries=1,
+            points=MYSTERY_FIXED_POINTS)
+        self.assertEqual(climb.display_grade, "?")
+
+        revealed = reveal_due_mystery_climbs()
+
+        self.assertEqual([c.id for c in revealed], [climb.id])
+        climb.refresh_from_db()
+        ascent.refresh_from_db()
+        self.assertEqual(climb.tag, "green")
+        self.assertEqual(climb.display_grade, "V4")
+        self.assertEqual(
+            ascent.points, calculate_points("V4", 1, "green"))
+        self.assertNotEqual(ascent.points, MYSTERY_FIXED_POINTS)
+
+    def test_young_mystery_stays_hidden(self):
+        climb = self.make_climb(grade="V4", tag="mystery")
+        self.backdate(climb, 6)
+        ascent = climb.ascents.create(
+            user=self.make_user("young-sender"), tries=1,
+            points=MYSTERY_FIXED_POINTS)
+
+        self.assertEqual(reveal_due_mystery_climbs(), [])
+        climb.refresh_from_db()
+        ascent.refresh_from_db()
+        self.assertEqual(climb.tag, "mystery")
+        self.assertEqual(ascent.points, MYSTERY_FIXED_POINTS)
+
+    def test_map_view_reveals_before_rendering(self):
+        climb = self.make_climb(grade="V4", tag="mystery")
+        self.backdate(climb, 8)
+        ascent = climb.ascents.create(
+            user=self.make_user("map-sender"), tries=1,
+            points=MYSTERY_FIXED_POINTS)
+
+        response = self.client.get(reverse("climbs:map"))
+
+        self.assertEqual(response.status_code, 200)
+        climb.refresh_from_db()
+        ascent.refresh_from_db()
+        self.assertEqual(climb.tag, "green")
+        self.assertEqual(
+            ascent.points, calculate_points("V4", 1, "green"))
+
+    def test_reveal_is_idempotent(self):
+        climb = self.make_climb(grade="V4", tag="mystery")
+        self.backdate(climb, 8)
+        reveal_due_mystery_climbs()
+        self.assertEqual(reveal_due_mystery_climbs(), [])
+
+    def test_correcting_the_tag_or_grade_rescores_ascents(self):
+        self.client.force_login(self.make_user("reveal-staff", staff=True))
+        climb = self.make_climb(grade="V4", tag="white")
+        ascent = climb.ascents.create(
+            user=self.make_user("corrector"), tries=1,
+            points=calculate_points("V4", 1, "white"))
+
+        response = self.client.post(
+            reverse("climbs:climb-update", args=[climb.id]),
+            json.dumps({
+                "name": climb.name, "grade": "V6", "tag": "yellow",
+                "colour": climb.colour, "wall": climb.wall,
+                "is_active": True, "x_percent": climb.x_percent,
+                "y_percent": climb.y_percent,
+            }),
+            content_type="application/json")
+
+        self.assertEqual(response.status_code, 200)
+        climb.refresh_from_db()
+        ascent.refresh_from_db()
+        self.assertEqual(climb.grade, "V6")
+        self.assertEqual(climb.tag, "yellow")
+        self.assertEqual(
+            ascent.points, calculate_points("V6", 1, "yellow"))

@@ -31,6 +31,7 @@ from .models import (
     tag_supports_grade,
 )
 from .scoring import MYSTERY_FIXED_POINTS
+from .services import reveal_due_mystery_climbs
 
 MAP_WIDTH = 256    # overlay viewBox width (see models.WALL_MAP_WIDTH)
 MAP_HEIGHT = 512   # overlay viewBox height (see models.WALL_MAP_HEIGHT)
@@ -55,6 +56,9 @@ def _selected_wall_set(wall, requested):
 
 
 def map_view(request):
+    # A mystery climb set a week ago reveals itself on the next visit;
+    # its ascents are re-scored before the map and boards read them.
+    reveal_due_mystery_climbs()
     # Sent climbs show a green grade for the viewer who sent them.
     sent_ids = set()
     if request.user.is_authenticated:
@@ -268,6 +272,8 @@ def _leaderboard_wall(request):
 
 
 def leaderboard_view(request):
+    # Reveal before rows are built so the board uses the new points.
+    reveal_due_mystery_climbs()
     walls = []
     for wall, wall_display in WALL_CHOICES:
         sets = list(ClimbSet.objects.filter(wall=wall))
@@ -371,6 +377,7 @@ def _grade_vote_counts(climb):
 
 
 def climb_detail_api(request, climb_id):
+    reveal_due_mystery_climbs()
     climb = get_object_or_404(Climb, id=climb_id)
     active = ClimbSet.active(climb.wall)
     archived = (
@@ -1315,6 +1322,8 @@ def climb_update_api(request, climb_id):
         climb.x_percent = data["x_percent"]
         climb.y_percent = data["y_percent"]
     previous_wall = climb.wall
+    previous_grade = climb.grade
+    previous_tag = climb.tag
     for field in ("name", "grade", "tag", "colour", "wall",
                   "is_active"):
         if field in data:
@@ -1326,6 +1335,16 @@ def climb_update_api(request, climb_id):
         # set, which the panel always sends `wall` for.
         climb.climb_set = _active_set_for(data["wall"])
     climb.save()
+    if climb.grade != previous_grade or climb.tag != previous_tag:
+        # A corrected grade/tag changes what every send on the climb is
+        # worth; keep the board in step instead of waiting for a manual
+        # recalc.
+        from .scoring import calculate_points
+        for ascent in climb.ascents.all():
+            fresh = calculate_points(
+                climb.grade, ascent.tries, climb.tag)
+            if ascent.points != fresh:
+                Ascent.objects.filter(pk=ascent.pk).update(points=fresh)
     return JsonResponse({"status": "ok"})
 
 
