@@ -674,10 +674,6 @@ nav a svg {
         gap: 0.5rem;
     }
 
-    .brand {
-        display: none;
-    }
-
     .nav-name {
         display: none;
     }
@@ -689,21 +685,20 @@ nav a svg {
    one row at 390px without sideways scrolling. */
 @media (max-width: 600px) {
     nav {
-        gap: 0.4rem;
+        gap: 0.3rem;
         padding: 0.45rem 0.5rem;
         padding-top: calc(0.45rem + env(safe-area-inset-top, 0px));
     }
 
     .brand {
-        font-size: 0.78rem;
-        margin-right: 0;
+        display: none;
     }
 
     .nav-links {
         min-width: 0;
         overflow-x: auto;
         scrollbar-width: none;
-        gap: 0.3rem;
+        gap: 0.14rem;
     }
 
     .nav-links::-webkit-scrollbar {
@@ -711,13 +706,10 @@ nav a svg {
     }
 
     nav a {
-        font-size: 0.66rem;
-        padding: 0.5rem 0.42rem;
+        font-size: 0.62rem;
+        padding: 0.45rem 0.28rem;
+        gap: 0.26rem;
         white-space: nowrap;
-    }
-
-    nav a svg {
-        display: none;
     }
 
     [data-nav-admin] {
@@ -2792,7 +2784,7 @@ ul.plain li {
 
 .map-fit-btn {
     right: 0.7rem;
-    bottom: calc(2.4rem + env(safe-area-inset-bottom, 0px));
+    bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));
 }
 
 .map-filter-btn svg,
@@ -2888,26 +2880,9 @@ body.filter-open .filter-panel {
     flex-shrink: 0;
 }
 
-.filter-x,
 .filter-done {
     min-height: 44px;
     min-width: 44px;
-}
-
-.filter-x {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 1.6rem;
-    line-height: 1;
-    cursor: pointer;
-}
-
-.filter-x:hover {
-    color: var(--text);
-}
-
-.filter-done {
     margin: 0;
 }
 
@@ -3073,7 +3048,6 @@ body.filter-open .filter-panel {
         padding-left: 1rem;
     }
 
-    .filter-x,
     .filter-done {
         display: none;
     }

@@ -1740,13 +1740,28 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertNotContains(response, ">= 1.3")
 
     def test_map_has_watermark_and_closes_filters(self):
-        # Every page carries the quiet summit_map mark, and the filter
-        # sheet closes from its scrim, X, Done button or Escape.
+        # Every page except the map carries the quiet summit_map mark;
+        # on the map it would sit under the Fit wall button. The filter
+        # sheet closes from its scrim, Done button or Escape.
         response = self.client.get(reverse("climbs:map"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'class="watermark"')
+        self.assertNotContains(response, 'class="watermark"')
+        self.assertContains(
+            self.client.get(reverse("climbs:leaderboard")),
+            'class="watermark"')
         self.assertContains(response, "filterScrim.addEventListener")
         self.assertContains(response, "data-close-filter")
+
+    def test_map_filter_sheet_only_opens_from_button(self):
+        # The sheet never autofocuses the search box and never reopens
+        # from a saved view: the floating button is the only way in.
+        response = self.client.get(reverse("climbs:map"))
+        content = response.content.decode()
+        self.assertNotIn("saved.filterOpen", content)
+        open_filter = content.split("function openFilter(")[1].split(
+            "function closeFilter(")[0]
+        self.assertNotIn("climb-search", open_filter)
+        self.assertNotIn(".focus()", open_filter)
 
     def test_tag_bands_cover_every_tag(self):
         # Pills and graph bars wear the climb's own tag: seed one
@@ -1895,10 +1910,15 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertContains(response, 'class="map-filter-btn"')
         self.assertContains(response, 'aria-label="Filters"')
         self.assertContains(response, 'id="climb-search"')
+        self.assertContains(
+            response,
+            'type="text" inputmode="search" enterkeyhint="search" '
+            'id="climb-search"')
         self.assertContains(response, "Search climbs")
         self.assertContains(response, 'id="climb-list"')
         self.assertContains(response, "Climbs on this wall")
         self.assertContains(response, 'id="fit-wall"')
+        self.assertNotContains(response, 'class="filter-x"')
         self.assertNotContains(response, "set-switcher")
         self.assertNotContains(response, "set-tab-text")
         css_path = finders.find("climbs/style.css")
@@ -1908,6 +1928,16 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         self.assertIn("position: fixed", panel)
         self.assertIn("bottom: 0", panel)
         self.assertIn("@media (min-width: 1000px)", css)
+        # Filters and Fit wall share one bottom line.
+        bottom = "bottom: calc(0.9rem + env(safe-area-inset-bottom, 0px));"
+        filter_blocks = re.findall(
+            r"(?m)^\.map-filter-btn \{([^}]*)\}", css)
+        fit_blocks = re.findall(r"(?m)^\.map-fit-btn \{([^}]*)\}", css)
+        self.assertTrue(any(bottom in block for block in filter_blocks))
+        self.assertTrue(any(bottom in block for block in fit_blocks))
+        # Phone nav keeps its icons.
+        phone = css.split("@media (max-width: 600px)")[1].split("@media")[0]
+        self.assertNotIn("nav a svg", phone)
 
     def test_sheet_copy_is_trimmed(self):
         response = self.client.get(reverse("climbs:map"))

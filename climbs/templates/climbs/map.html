@@ -9,7 +9,6 @@
             <h2 id="filter-title">Filters</h2>
             <div class="filter-head-actions">
                 <button type="button" class="btn btn-sm filter-done" data-close-filter>Done</button>
-                <button type="button" class="filter-x" data-close-filter aria-label="Close filters">×</button>
             </div>
         </div>
         <div class="set-panel">
@@ -41,7 +40,7 @@
                 </select>
             </label>
             <div class="climb-search">
-                <input type="search" id="climb-search" placeholder="Search climbs" aria-label="Search climbs" autocomplete="off">
+                <input type="text" inputmode="search" enterkeyhint="search" id="climb-search" placeholder="Search climbs" aria-label="Search climbs" autocomplete="off">
                 <button type="button" class="climb-search-clear" id="climb-search-clear" aria-label="Clear search" hidden>×</button>
             </div>
             <ul class="climb-results" id="climb-search-results" aria-label="Matching climbs" aria-live="polite"></ul>
@@ -521,17 +520,13 @@
                 (filterIsDesktop() ||
                  document.body.classList.contains('filter-open'));
         }
-        function openFilter(focus) {
+        function openFilter() {
             if (!filterPanel || filterIsDesktop()) return;
             document.body.classList.add('filter-open');
             if (filterScrim) filterScrim.hidden = false;
             filterPanel.setAttribute('aria-modal', 'true');
             if (filterOpenBtn) {
                 filterOpenBtn.setAttribute('aria-expanded', 'true');
-            }
-            if (focus !== false) {
-                const target = document.getElementById('climb-search');
-                if (target) target.focus();
             }
         }
         function closeFilter(returnFocus) {
@@ -596,7 +591,6 @@
                 sessionStorage.setItem(VIEW_KEY, JSON.stringify({
                     key: selectionKey(),
                     scale: state.scale, x: state.x, y: state.y,
-                    filterOpen: filterIsOpen(),
                 }));
             } catch (e) { /* private mode: no restore */ }
         }
@@ -768,7 +762,6 @@
             if (!saved || saved.key !== selectionKey()) return;
             requestAnimationFrame(() => {
                 mapZoom.setView(saved.scale, saved.x, saved.y);
-                if (saved.filterOpen) openFilter(false);
             });
         })();
 
