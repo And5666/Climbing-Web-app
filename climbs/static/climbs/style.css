@@ -284,36 +284,36 @@
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-display: ui-serif, Georgia, "Times New Roman", serif;
 
-    --bg: #f3f0e9;
-    --surface: #fbf9f4;
-    --surface-2: #ece6da;
-    --border: #14130f;
-    --border-soft: rgba(20, 19, 15, 0.18);
-    --text: #14130f;
-    --muted: #6f6a60;
-    --accent: #d93a00;
-    --accent-ink: #ffffff;
-    --link: #2f5f9e;
-    --sand: #d93a00;
-    --danger: #b3261e;
-    --danger-ink: #fff8f3;
+    --bg: #f2ede3;
+    --surface: #fbf8f1;
+    --surface-2: #ede5d6;
+    --border: #3b3327;
+    --border-soft: rgba(59, 51, 39, 0.20);
+    --text: #1b1711;
+    --muted: #6d6455;
+    --accent: #c93a0c;
+    --accent-ink: #fffdf8;
+    --link: #2d5c97;
+    --sand: #b4451c;
+    --danger: #a62f24;
+    --danger-ink: #fffdf8;
     --ok: #2f6b3f;
-    --err: #b3261e;
-    --star: #b07d12;
-    --star-dim: #cfc6b4;
+    --err: #a62f24;
+    --star: #a9780f;
+    --star-dim: #d3c9b6;
     --r-sm: 2px;
     --r-btn: 0px;
     --r-md: 2px;
     --bw: 1px;
-    --shadow: 0 1px 0 rgba(20, 19, 15, 0.12);
+    --shadow: 0 2px 6px rgba(58, 45, 25, 0.12);
     --heading-transform: none;
     --heading-spacing: 0.005em;
-    --me-bg: #e6dfd1;
+    --me-bg: #e7decc;
     --dot-radius: 2px;
-    --wall-wash: #8a8578;
-    --wall-panel: #c9c1b2;
-    --wall-line: #14130f;
-    --wall-line-dim: #8a8578;
+    --wall-wash: #8d8576;
+    --wall-panel: #ccc3b2;
+    --wall-line: #332d24;
+    --wall-line-dim: #8d8576;
 }
 
 /* Notebook Night: the same printed page after dark — warm near-black
@@ -323,36 +323,43 @@
     --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-display: ui-serif, Georgia, "Times New Roman", serif;
 
-    --bg: #14130f;
-    --surface: #1d1b16;
-    --surface-2: #26231c;
-    --border: #8a8478;
-    --border-soft: #322e26;
-    --text: #f3f0e9;
-    --muted: #a8a294;
-    --accent: #ff5a1f;
+    --bg: #11100d;
+    --surface: #1a1814;
+    --surface-2: #24211b;
+    --border: #5e5546;
+    --border-soft: #332e26;
+    --text: #f1ece1;
+    --muted: #a79e8d;
+    --accent: #e75a24;
     --accent-ink: #1a0d06;
-    --link: #a8c4ea;
-    --sand: #e8a087;
-    --danger: #e2694f;
+    --link: #a6c3e6;
+    --sand: #d99a7f;
+    --danger: #d96a52;
     --danger-ink: #1a0d06;
     --ok: #8fbf9a;
-    --err: #e2694f;
+    --err: #d96a52;
     --star: #e0b04a;
-    --star-dim: #4a453b;
+    --star-dim: #4a4438;
     --r-sm: 2px;
     --r-btn: 0px;
     --r-md: 2px;
     --bw: 1px;
-    --shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+    --shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
     --heading-transform: none;
     --heading-spacing: 0.005em;
-    --me-bg: #2b2720;
+    --me-bg: #2a251d;
     --dot-radius: 2px;
-    --wall-wash: #7a7466;
-    --wall-panel: #4a453b;
-    --wall-line: #f3f0e9;
-    --wall-line-dim: #a8a294;
+    --wall-wash: #746d5f;
+    --wall-panel: #464035;
+    --wall-line: #d9d1c1;
+    --wall-line-dim: #9a9284;
+}
+
+/* A finer pen for the wall drawing in the notebook pair. */
+:root[data-theme="notebook"],
+:root[data-theme="notebook-night"] {
+    --wall-edge: 3.6;
+    --wall-feature: 2.4;
 }
 
 /* --- Reset / base --- */
@@ -468,6 +475,34 @@ h1, h2, h3, h4 {
 :root[data-theme="notebook"] .brand,
 :root[data-theme="notebook-night"] .brand {
     font-family: var(--font-display);
+}
+
+/* Notebook pair: editorial active states instead of solid accent
+   blocks. The accent becomes a pen line, not a highlighter. */
+:root[data-theme="notebook"] .nav-link.active,
+:root[data-theme="notebook-night"] .nav-link.active,
+:root[data-theme="notebook"] .nav-link.active:hover,
+:root[data-theme="notebook-night"] .nav-link.active:hover {
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--text);
+    box-shadow: inset 0 -2px 0 var(--accent);
+    filter: none;
+}
+
+:root[data-theme="notebook"] .wall-tabs [role="tab"][aria-selected="true"],
+:root[data-theme="notebook-night"] .wall-tabs [role="tab"][aria-selected="true"] {
+    background: var(--surface);
+    color: var(--text);
+    border-color: var(--border-soft);
+    box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+:root[data-theme="notebook"] .marker-filter button[aria-pressed="true"],
+:root[data-theme="notebook-night"] .marker-filter button[aria-pressed="true"] {
+    background: var(--text);
+    border-color: var(--text);
+    color: var(--bg);
 }
 
 /* --- Nav --- */

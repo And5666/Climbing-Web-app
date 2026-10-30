@@ -2182,10 +2182,13 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         for var in ("--wall-wash:", "--wall-panel:", "--wall-line:",
                     "--wall-line-dim:"):
             self.assertEqual(css.count(var), 9, var)
-        self.assertEqual(css.count("--wall-edge:"), 1)
-        self.assertEqual(css.count("--wall-feature:"), 1)
+        # The notebook pair overrides the global pen with a finer one.
+        self.assertEqual(css.count("--wall-edge:"), 2)
+        self.assertEqual(css.count("--wall-feature:"), 2)
         self.assertIn("--wall-edge: 4.5", css)
         self.assertIn("--wall-feature: 3.0", css)
+        self.assertIn("--wall-edge: 3.6", css)
+        self.assertIn("--wall-feature: 2.4", css)
 
     def test_marker_layer_overlays_wall_image(self):
         # Regression: with no positioning, the SVG sat below the <img> in
