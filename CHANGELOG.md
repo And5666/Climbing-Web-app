@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
 - Mystery climbs reveal their stored grade after seven days, on the
   next map/leaderboard/climb-detail load. A grade that overlaps two
