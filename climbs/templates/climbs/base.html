@@ -128,8 +128,6 @@
         {% block content %}{% endblock %}
     </main>
 
-    {% if request.resolver_match.url_name != 'map' %}<div class="watermark" aria-hidden="true">summit<span class="brand-mark">_map</span></div>{% endif %}
-
     <div id="user-card" aria-hidden="true" data-staff="{% if user.is_staff %}1{% endif %}">
         <div class="user-scrim" data-close-user></div>
         <section class="user-box" role="dialog" aria-modal="true" aria-label="Climber">

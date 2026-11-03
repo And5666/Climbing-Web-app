@@ -5,33 +5,35 @@
 {% block content %}
 <div class="forum-page">
     <header class="forum-head">
-        <div>
-            <h2>Forum</h2>
-            <p class="muted">Talk beta, share sends, or plan the next session. Every climber can post.</p>
-        </div>
-        <div class="forum-head-actions">
-            {% if user.is_authenticated %}
-                <button class="btn btn-md" id="forum-new-post" type="button">New post</button>
-            {% else %}
-                <a class="btn btn-md" href="{% url 'login' %}?next={% url 'climbs:forum' %}">Sign in to post</a>
-            {% endif %}
-            <div class="forum-sort" role="group" aria-label="Sort posts">
-                <span class="muted">Sort</span>
-                {% for value, label in sort_choices %}
-                    <a href="?sort={{ value }}" class="forum-sort-link{% if sort == value %} active{% endif %}"{% if sort == value %} aria-current="true"{% endif %}>{{ label }}</a>
-                {% endfor %}
-            </div>
+        <div class="forum-sort" role="group" aria-label="Sort posts">
+            <span class="muted">Sort</span>
+            {% for value, label in sort_choices %}
+                <a href="?sort={{ value }}" class="forum-sort-link{% if sort == value %} active{% endif %}"{% if sort == value %} aria-current="true"{% endif %}>{{ label }}</a>
+            {% endfor %}
         </div>
     </header>
+
+    {% if user.is_authenticated %}
+        <button class="btn btn-md forum-fab" id="forum-new-post" type="button" aria-haspopup="dialog">
+            <span class="forum-fab-icon" aria-hidden="true">+</span>
+            <span>New post</span>
+        </button>
+    {% else %}
+        <a class="btn btn-md forum-fab" href="{% url 'login' %}?next={% url 'climbs:forum' %}">
+            <span class="forum-fab-icon" aria-hidden="true">+</span>
+            <span>Sign in to post</span>
+        </a>
+    {% endif %}
 
     <div class="forum-posts">
         {% for post in page.object_list %}
             <article class="card forum-post{% if post.is_pinned %} pinned{% endif %}" data-post="{{ post.id }}">
+                <a class="forum-post-link" href="{% url 'climbs:forum-post' post.id %}?sort={{ sort }}" aria-label="Open post{% if post.title %}: {{ post.title }}{% endif %}"></a>
                 {% if post.is_pinned %}
                     <span class="forum-pin-badge">Pinned</span>
                 {% endif %}
                 {% if post.title %}
-                    <h3 class="forum-post-title"><a href="{% url 'climbs:forum-post' post.id %}?sort={{ sort }}">{{ post.title }}</a></h3>
+                    <h3 class="forum-post-title">{{ post.title }}</h3>
                 {% endif %}
                 <p class="forum-meta">
                     {% if post.author %}

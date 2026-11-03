@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="forum-page">
-    <p class="forum-back"><a href="{% url 'climbs:forum' %}?sort={{ back_sort }}">← Back to the forum</a></p>
+    <p class="forum-back"><a class="btn btn-sm btn-secondary" href="{% url 'climbs:forum' %}?sort={{ back_sort }}">← Back to the forum</a></p>
 
     <article class="card forum-post forum-post-full{% if post.is_pinned %} pinned{% endif %}" data-post="{{ post.id }}">
         {% if post.is_pinned %}
@@ -82,7 +82,7 @@
             {% for comment in comments %}
                 {% include "climbs/_forum_comment.html" with comment=comment %}
             {% empty %}
-                <p class="muted forum-no-comments">No comments yet — say something.</p>
+                <p class="muted forum-no-comments">No comments yet.</p>
             {% endfor %}
         </div>
     </section>

@@ -1751,16 +1751,18 @@ class AdminApiTests(ClimbTestMixin, TestCase):
         # Grade labels stay on at every zoom level (no zoom-out gate).
         self.assertNotContains(response, ">= 1.3")
 
-    def test_map_has_watermark_and_closes_filters(self):
-        # Every page except the map carries the quiet summit_map mark;
-        # on the map it would sit under the Fit wall button. The filter
+    def test_pages_have_no_watermark_and_map_closes_filters(self):
+        # The old summit_map watermark has been removed everywhere so
+        # it cannot sit under buttons or floating controls. The filter
         # sheet closes from its scrim, Done button or Escape.
         response = self.client.get(reverse("climbs:map"))
         self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'class="watermark"')
-        self.assertContains(
-            self.client.get(reverse("climbs:leaderboard")),
-            'class="watermark"')
+        for page in (reverse("climbs:map"),
+                     reverse("climbs:leaderboard"),
+                     reverse("climbs:forum")):
+            with self.subTest(page=page):
+                self.assertNotContains(
+                    self.client.get(page), 'class="watermark"')
         self.assertContains(response, "filterScrim.addEventListener")
         self.assertContains(response, "data-close-filter")
 
@@ -3421,6 +3423,25 @@ class ForumTests(ClimbTestMixin, TestCase):
         self.assertEqual(content.count('aria-current="page"'), 1)
         pos = content.index('class="nav-link active"')
         self.assertIn("Forum", content[pos:pos + 1200])
+
+    def test_forum_post_card_links_to_the_discussion(self):
+        post = self.make_post(title="Clickable")
+        response = self.client.get(reverse("climbs:forum"))
+        self.assertContains(response, 'class="forum-post-link"')
+        self.assertContains(
+            response,
+            f'href="{reverse("climbs:forum-post", args=[post.id])}?sort=new"')
+
+    def test_post_page_has_back_button_and_plain_empty_state(self):
+        post = self.make_post()
+        response = self.client.get(
+            reverse("climbs:forum-post", args=[post.id]))
+        self.assertContains(
+            response,
+            f'href="{reverse("climbs:forum")}?sort=new"')
+        self.assertContains(response, 'class="btn btn-sm btn-secondary"')
+        self.assertContains(response, "No comments yet.")
+        self.assertNotContains(response, "say something")
 
     def test_old_news_url_redirects_to_forum(self):
         response = self.client.get(reverse("climbs:news"))
