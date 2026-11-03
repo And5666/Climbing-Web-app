@@ -1,6 +1,6 @@
 #!/bin/sh
-# Migrate the (volume-backed) database, then serve. exec keeps
-# gunicorn as PID 1 so `docker stop` shuts it down cleanly.
+# run the migrations then start gunicorn. exec makes gunicorn pid 1
+# so docker stop kills it properly
 set -e
 python manage.py migrate --noinput
 exec gunicorn summit_map_project.wsgi:application \

@@ -41,8 +41,8 @@ WALL_VALUES = [w for w, _ in WALL_CHOICES]
 
 
 def _selected_wall_set(wall, requested):
-    """(selected, active) set for one wall: the requested set when it
-    belongs to the wall, else the active set, else the newest set."""
+    """picks the set to show for a wall. use the one in the url if its
+    real, otherwise the live set, otherwise the newest one"""
     sets = list(ClimbSet.objects.filter(wall=wall).order_by("-created_at"))
     active = ClimbSet.active(wall)
     selected = active
@@ -56,10 +56,9 @@ def _selected_wall_set(wall, requested):
 
 
 def map_view(request):
-    # A mystery climb set a week ago reveals itself on the next visit;
-    # its ascents are re-scored before the map and boards read them.
+    # mystery climbs from a week ago reveal when someone loads the map
     reveal_due_mystery_climbs()
-    # Sent climbs show a green grade for the viewer who sent them.
+    # we need the ids the user has sent so the marker can show green
     sent_ids = set()
     if request.user.is_authenticated:
         sent_ids = set(Ascent.objects.filter(
@@ -71,8 +70,8 @@ def map_view(request):
         walls.append({"wall": wall, "wall_display": wall_display,
                       "sets": sets, "active": active,
                       "selected": selected})
-    # Deep link ?climb=<id> (e.g. from a past board) jumps to that
-    # climb's own set so the marker is actually on the map.
+    # ?climb=id jumps to the set that climb is in, otherwise the marker
+    # is not on the wall
     jump = request.GET.get("climb")
     if jump:
         try:
@@ -112,10 +111,9 @@ def map_view(request):
 
 
 def _leaderboard_rows(climb_set):
-    """Public board: voided ascents score nothing and hidden users sit
-    out while under review. On the live set, soft-removed climbs
-    (is_active=False) are gone from the wall, so their sends leave
-    the board too; archived sets keep their full history."""
+    """rows for the public board. voided sends and hidden users are
+    left out. on the live set removed climbs come off the board too,
+    old sets keep all there history"""
     if climb_set is None:
         return []
     ascents = Ascent.objects.filter(
@@ -135,7 +133,7 @@ def _audit_ascent(user, ascent, climb, actor, action,
                   old_tries=None, new_tries=None,
                   old_grade="", new_grade="",
                   old_points=None, new_points=None, note=""):
-    """One row in the ascent audit ledger (server timestamps only)."""
+    """write one row to the send audit table"""
     from .models import AscentAudit
     return AscentAudit.objects.create(
         user=user, ascent=ascent, climb=climb, actor=actor, action=action,
@@ -145,8 +143,8 @@ def _audit_ascent(user, ascent, climb, actor, action,
 
 
 def _deal_positions(rows, key="total_points"):
-    """Competition ranking for a board, dealt in place: equal scores
-    share a position (1, 2, 2, 4), so a draw splits the medal."""
+    """give each row a position. same score gets the same place, so it
+    goes 1, 2, 2, 4 like a comp"""
     last_score, last_rank = None, 0
     for index, row in enumerate(rows, start=1):
         if row[key] != last_score:
@@ -156,9 +154,8 @@ def _deal_positions(rows, key="total_points"):
 
 
 def _set_date_range(wall_sets, climb_set):
-    """(start, end) datetimes for a set: it runs from its creation
-    until the next set on the same wall starts. End is None while the
-    set is the latest."""
+    """start and end date for a set. it runs from when it was made till
+    the next set on that wall. end is none for the newest set"""
     if climb_set is None:
         return (None, None)
     key = (climb_set.created_at, climb_set.id)
@@ -168,8 +165,8 @@ def _set_date_range(wall_sets, climb_set):
 
 
 def _set_stats(climb_set):
-    """Best rated / most popular / flash-friendly / totals / grade
-    graph for one set. Empty when nothing is logged on it yet."""
+    """stats for one set, best rated, popular, votes, totals and the
+    grade graph. none if the set is empty"""
     if climb_set is None:
         return None
     climbs = list(climb_set.climbs.all())
@@ -184,8 +181,8 @@ def _set_stats(climb_set):
                .filter(sends__gte=1).order_by("-sends").first())
     tries = list(Ascent.objects.filter(climb__climb_set=climb_set)
                  .values("climb_id", "user_id", "tries"))
-    # Softest/hardest come from grade suggestions vs the set grade.
-    # At least two votes in a direction, or the row stays empty.
+    # softest and hardest come from grade votes. need 2 votes before it
+    # shows anything
     soft_votes, hard_votes = {}, {}
     for s in GradeSuggestion.objects.filter(
             climb__climb_set=climb_set).values("climb_id",
@@ -210,8 +207,8 @@ def _set_stats(climb_set):
     sends_by_grade_tag = {}
     for a in tries:
         climb = by_id[a["climb_id"]]
-        # Mystery sends bucket under '?' so the hidden grade can't be
-        # read back out of the per-grade counts before the reveal.
+        # mystery sends go under ? so the hidden grade cant be worked out
+        # from the graph
         grade_key = '?' if climb.tag == 'mystery' else climb.grade
         sends_by_grade[grade_key] = sends_by_grade.get(grade_key, 0) + 1
         tag = climb.tag if climb.tag in TAG_VALUES else 'mystery'
@@ -222,8 +219,7 @@ def _set_stats(climb_set):
     top = max([sends_by_grade.get(g, 0) for g in grades] + [0])
 
     def segments_for(grade):
-        # Every segment wears the tag set on its own climbs: blue tag
-        # means a blue segment. No voting, no blending.
+        # each bit of the bar uses the tag on that climb
         segments = []
         for tag in TAG_VALUES:
             sends = sends_by_grade_tag.get((grade, tag), 0)
@@ -259,9 +255,8 @@ def _set_stats(climb_set):
 
 
 def _leaderboard_wall(request):
-    """Wall whose board is open: ?wall= wins, then a set param, else
-    Main Wall. The client may switch to the last wall it remembers
-    when the URL is neutral."""
+    """which wall the board should open on. ?wall= wins, then a set
+    param, otherwise main wall"""
     wall = request.GET.get("wall")
     if wall in WALL_VALUES:
         return wall
@@ -272,7 +267,7 @@ def _leaderboard_wall(request):
 
 
 def leaderboard_view(request):
-    # Reveal before rows are built so the board uses the new points.
+    # reveal first so the board gets the new points
     reveal_due_mystery_climbs()
     walls = []
     for wall, wall_display in WALL_CHOICES:
@@ -344,8 +339,8 @@ def leaderboard_view(request):
 
 
 def _tag_grade_error(tag, grade):
-    """400 message when a tag/grade pair leaves its circuit band, or
-    None when the pair is allowed (mystery allows any grade)."""
+    """error text if the tag and grade dont match, otherwise none.
+    mystery can use any grade"""
     if tag not in TAG_VALUES:
         return "Unknown tag."
     if grade not in GRADE_VALUES:
@@ -357,7 +352,7 @@ def _tag_grade_error(tag, grade):
 
 
 def _grade_vote_counts(climb):
-    """Split grade suggestions into harder/at/softer vs the set grade."""
+    """count the grade votes as harder, at or softer"""
     if climb.tag == 'mystery':
         return {"harder": 0, "at": 0, "softer": 0, "total": 0}
     target = grade_number(climb.grade)
@@ -437,12 +432,9 @@ def climb_detail_api(request, climb_id):
 
 
 def set_user_sends_api(request, set_id, username):
-    """One climber's whole log on one set, newest first, for tapping
-    a name on either leaderboard: climb, grade, tries, points and
-    time per send. Non-voided ascents only — no flags, audit trail
-    or voided history (staff keep the full user-log page for that).
-    Mystery grades stay '?' until revealed. Hidden users stay
-    private to everyone but staff."""
+    """one users log on one set, newest first. used when you tap a name
+    on the board. only normal sends, no flags or voids. hidden users
+    are private unless you are staff"""
     from django.http import Http404
     from zoneinfo import ZoneInfo
     climb_set = get_object_or_404(ClimbSet, id=set_id)
@@ -471,15 +463,13 @@ def set_user_sends_api(request, set_id, username):
 
 
 def climber_api(request, username):
-    """Mini public profile for tapping a name on a board or comment:
-    picture, totals, hardest grade and current ranks."""
+    """small profile for the popup when you tap a name"""
     user = get_object_or_404(get_user_model(), username=username)
     totals = user.ascents.filter(is_voided=False).aggregate(
         sends=Count("id"), points=Sum("points"))
     best = None
-    # Mystery climbs stay out: their hidden grade must not leak
-    # through a climber's "best" line before the reveal. Voided
-    # ascents score nothing, so they never count as a best either.
+    # no mystery climbs here, the hidden grade would leak. voided sends
+    # dont count either
     for grade in user.ascents.exclude(
             climb__tag="mystery").filter(
             is_voided=False).values_list("climb__grade", flat=True):
@@ -529,8 +519,7 @@ def ascent_api(request, climb_id):
         return denied
     climb = get_object_or_404(Climb, id=climb_id)
     if request.method == "DELETE":
-        # Undo your own send: the marker, boards and profile all read
-        # live data, so everything updates on the next load.
+        # undo a send
         ascent = Ascent.objects.filter(
             user=request.user, climb=climb).first()
         if ascent is None:
@@ -553,16 +542,14 @@ def ascent_api(request, climb_id):
         return JsonResponse(
             {"error": "Already logged — undo it first to change it."},
             status=400)
-    # Basic prevention: per-user rate limit on logging.
+    # stop people spamming sends
     from .anticheat import rate_limited, refresh_user_flags
     if rate_limited(request.user):
         return JsonResponse(
             {"error": "Too many sends logged lately — try again later."},
             status=429)
-    # The actual try count is stored (scoring floors at 5+, so 6 and
-    # 40 score the same). The exists() check above races a double-tap:
-    # the unique (user, climb) constraint is the backstop, reported
-    # the same way.
+    # the real try count is saved. the exists check above can race a
+    # double tap so the unique constraint is the backup
     try:
         ascent = Ascent.objects.create(
             user=request.user, climb=climb, tries=tries)
@@ -672,8 +659,7 @@ def _active_set_for(wall):
 
 
 def _admin_selection(request):
-    """(wall, sets, active, selected) for the admin tabs: the requested
-    set when it belongs to the wall, else the live set, else newest."""
+    """picks the wall and set for the admin tabs"""
     wall = request.GET.get("wall", "main")
     if wall not in WALL_VALUES:
         wall = "main"
@@ -728,9 +714,8 @@ def climb_admin_view(request):
 
 
 def _group_flags(flags):
-    """Collapse same-rule flags into display groups (newest first):
-    one header line per rule with a combined points total, keeping
-    the individual findings and their review buttons underneath."""
+    """group flags with the same rule so 15 flashes show as one line,
+    the single flags are still under it"""
     groups = []
     index = {}
     for flag in flags:
@@ -750,10 +735,7 @@ def _group_flags(flags):
 
 @user_passes_test(staff_check)
 def board_admin_view(request):
-    """Staff board with anti-cheat review: a Flags column per user
-    (suspicion badge + expandable rule evidence), moderation actions,
-    and flagged / suspicion / status filters. The wall tab scopes by
-    wall; the set picker scopes by set."""
+    """staff board with the anticheat review bits and filters"""
     from .models import Flag
     wall, sets, active, selected = _admin_selection(request)
     board = []
@@ -761,8 +743,8 @@ def board_admin_view(request):
         board_ascents = Ascent.objects.filter(
             climb__climb_set=selected, is_voided=False)
         if selected.is_active:
-            # Match the public board: removed climbs leave the review
-            # totals too while the set is live.
+            # same as the public board, removed climbs dont count while
+            # the set is live
             board_ascents = board_ascents.filter(climb__is_active=True)
         rows = list(
             board_ascents
@@ -785,10 +767,8 @@ def board_admin_view(request):
         for row in rows:
             user = users.get(row["user__username"])
             flags = by_name.get(row["user__username"], [])
-            # This board reviews one set: ascent-tied flags show only
-            # when the ascent sits on the viewed set. User-level flags
-            # (no ascent: whole-history patterns like flash rate) stay
-            # visible wherever the climber boards.
+            # only show flags for sends on this set. flags with no send
+            # are whole history so they show on any set
             row["hidden"] = user.leaderboard_hidden if user else False
             row["flags"] = [
                 f for f in flags
@@ -811,11 +791,8 @@ def board_admin_view(request):
             rows = [r for r in rows if any(
                 f.status == status for f in r["flags"])]
         for row in rows:
-            # The status filter narrows the rows AND the flags listed
-            # inside them: filtering status=open must not keep showing
-            # the row's closed flags. If the status filter leaves a
-            # displayed row with nothing shown, fall back to all its
-            # flags rather than hiding evidence.
+            # the status filter hides closed flags too. if that leaves
+            # nothing shown fall back to all of them
             shown = [
                 f for f in row["flags"]
                 if status not in ("open", "reviewed", "dismissed",
@@ -827,10 +804,7 @@ def board_admin_view(request):
             row["shown_open"] = [f for f in shown if f.status == "open"]
             row["shown_suspicion"] = min(
                 sum(f.points for f in row["shown_open"]), 100)
-            # Fifteen flashes in a row read as one line, not fifteen:
-            # same-rule flags collapse into a group with a combined
-            # points total; the individual findings stay expandable
-            # underneath with their own review buttons.
+            # group the same rule flags so the row is not huge
             row["open_groups"] = _group_flags(row["shown_open"])
             row["closed_groups"] = _group_flags(
                 [f for f in shown if f.status != "open"])
@@ -865,8 +839,8 @@ def board_admin_view(request):
 
 
 def _staff_or_404(request):
-    """Staff/superuser only, 404 for everyone else: flag review must
-    never be visible — or inferable — to normal users."""
+    """staff only. normal users get a 404 so they dont even know this
+    page exists"""
     if not (request.user.is_authenticated and request.user.is_staff):
         from django.http import Http404
         raise Http404()
@@ -882,9 +856,8 @@ def _moderation_log(actor, action, username="", details=None, note=""):
 
 @require_http_methods(["POST"])
 def flag_review_api(request, flag_id):
-    """Review one flag: dismiss / mark reviewed / confirm. Dismissing
-    or confirming requires a note; marking reviewed offers one. The
-    action is logged. Non-punitive wording throughout."""
+    """review one flag. dismiss and confirm need a note, reviewed does
+    not. every action gets logged"""
     from .models import Flag
     _staff_or_404(request)
     flag = get_object_or_404(Flag, id=flag_id)
@@ -914,12 +887,9 @@ def flag_review_api(request, flag_id):
 
 @require_http_methods(["POST"])
 def flags_review_many_api(request):
-    """Mark several flags reviewed in one action (one optional note
-    for the lot). Bulk is reviewed-only: dismissing or confirming
-    stays per-flag, where the required note belongs to one finding.
-    Only open flags move; anything already closed is skipped and
-    reported. Every change is logged per flag, like the single API.
-    """
+    """mark a load of flags as reviewed at once. bulk only does
+    reviewed, dismiss and confirm stay one at a time so the note
+    belongs to one flag. closed flags are skipped"""
     from .models import Flag
     _staff_or_404(request)
     try:
@@ -956,9 +926,7 @@ def flags_review_many_api(request):
 
 @require_http_methods(["POST"])
 def ascent_void_api(request, ascent_id):
-    """Void (or restore) one ascent: voided ascents stay in logs but
-    score nothing and leave every leaderboard. Reason required to
-    void; restoring offers a note. Logged + audited."""
+    """void or restore one send. void needs a reason. both get logged"""
     from .anticheat import refresh_user_flags
     _staff_or_404(request)
     ascent = get_object_or_404(
@@ -994,12 +962,8 @@ def ascent_void_api(request, ascent_id):
 
 
 def user_log_view(request, username):
-    """Admin-only full climb log for one user, newest first. Columns:
-    date/time (stored UTC, shown Europe/London), climb name/id, wall,
-    colour swatch + name, official grade, tries, points, voided
-    status, flags tied to the ascent. Filters: wall, date range,
-    flagged, voided. Totals on top, audit history below, CSV export.
-    Staff only (404 otherwise)."""
+    """full climb log for one user, staff only. has filters, totals,
+    audit history and a csv download"""
     from zoneinfo import ZoneInfo
 
     from django.http import HttpResponse
@@ -1104,8 +1068,7 @@ def user_log_view(request, username):
 
 @require_http_methods(["POST"])
 def user_hide_api(request, username):
-    """Hide a user from public leaderboards while under review (or
-    restore them). Note optional; every action is logged."""
+    """hide or unhide a user from the public boards. logged either way"""
     _staff_or_404(request)
     user = get_object_or_404(get_user_model(), username=username)
     try:
@@ -1123,8 +1086,8 @@ def user_hide_api(request, username):
 
 
 def _activate_set(climb_set):
-    """Make a set the live one: its climbs go live, every other set on
-    the wall (and their climbs) goes quiet."""
+    """make this set the live one and put the other sets on that wall
+    to sleep"""
     ClimbSet.objects.filter(wall=climb_set.wall).update(is_active=False)
     climb_set.is_active = True
     climb_set.save(update_fields=["is_active"])
@@ -1180,8 +1143,8 @@ def climb_set_delete_api(request, set_id):
 @user_passes_test(staff_check)
 @require_http_methods(["POST"])
 def set_remove_user_api(request, set_id):
-    """Pull a climber off one set's board: deletes their ascents in it
-    (ratings, votes and comments stay untouched)."""
+    """remove a climber from one set. deletes there sends on that set,
+    ratings and comments stay"""
     climb_set = get_object_or_404(ClimbSet, id=set_id)
     try:
         data = json.loads(request.body)
@@ -1212,10 +1175,8 @@ def set_remove_user_api(request, set_id):
 
 @require_http_methods(["POST"])
 def recalc_points_api(request):
-    """Recompute every ascent's points from its stored grade and tries
-    (official grade only). Fixes boards left stale by a scoring change.
-    Tries and timestamps are never touched; only rows whose points
-    differ are updated. Staff only (404 otherwise)."""
+    """recalculate every send from the stored grade and tries. fixes
+    stale points after a scoring change. only points get updated"""
     from .scoring import calculate_points
     _staff_or_404(request)
     total = 0
@@ -1247,14 +1208,13 @@ def climb_create_api(request):
     grade = data.get("grade")
     tag = data.get("tag")
     if tag is None and grade in GRADE_VALUES:
-        # Grade-only posts keep working: wear the grade's own band.
+        # no tag sent, use the normal tag for that grade
         tag = TAGS_BY_GRADE[grade][0]
     if tag is None:
         tag = "white"
     climb_set = None
     if data.get("climb_set") is not None:
-        # Placing straight into a set from the inspector: the set's
-        # wall wins, so the climb can never land in the wrong set.
+        # making the climb straight into a set, the set wall wins
         try:
             climb_set = ClimbSet.objects.get(id=int(data["climb_set"]))
         except (ClimbSet.DoesNotExist, ValueError, TypeError):
@@ -1270,8 +1230,7 @@ def climb_create_api(request):
         y = float(data["y_percent"])
     except (KeyError, TypeError, ValueError):
         return JsonResponse({"error": "x_percent/y_percent required."}, status=400)
-    # Markers live inside the wall bounds (minus the marker radius):
-    # anything outside is clamped back in, never stored out of view.
+    # keep the marker on the wall
     x, y = clamp_to_wall(x, y)
     climb = Climb.objects.create(
         name=data.get("name", ""),
@@ -1298,15 +1257,13 @@ def climb_update_api(request, climb_id):
     if "wall" in data and data["wall"] not in WALL_VALUES:
         return JsonResponse({"error": "Unknown wall."}, status=400)
     if "grade" in data or "tag" in data:
-        # Revealing a mystery climb is just an update: set its real
-        # tag and grade together and voting unlocks on its own.
+        # revealing a mystery is done here, set tag and grade together
         pair_error = _tag_grade_error(
             data.get("tag", climb.tag), data.get("grade", climb.grade))
         if pair_error:
             return JsonResponse({"error": pair_error}, status=400)
     for field in ("x_percent", "y_percent"):
-        # Marker drags send numbers; anything else would blow up on
-        # save, so reject it here with a 400 instead of a 500.
+        # dragging sends numbers. anything else would 500 on save
         if field in data:
             try:
                 data[field] = float(data[field])
@@ -1314,8 +1271,7 @@ def climb_update_api(request, climb_id):
                 return JsonResponse(
                     {"error": f"{field} must be a number."}, status=400)
     if "x_percent" in data or "y_percent" in data:
-        # A drag past the photo edge clamps back inside (minus the
-        # marker radius) instead of stranding the marker off-map.
+        # dont let a drag put the marker off the wall
         data["x_percent"], data["y_percent"] = clamp_to_wall(
             data.get("x_percent", climb.x_percent),
             data.get("y_percent", climb.y_percent))
@@ -1329,16 +1285,12 @@ def climb_update_api(request, climb_id):
         if field in data:
             setattr(climb, field, data[field])
     if "wall" in data and data["wall"] != previous_wall:
-        # A wall move re-homes the climb onto the new wall's live
-        # set. Any other edit (grade, tag, colour, name, position)
-        # leaves the climb in its current set — especially a draft
-        # set, which the panel always sends `wall` for.
+        # only a real wall change moves the climb to the new live set.
+        # a normal edit must not pull it out of a draft set
         climb.climb_set = _active_set_for(data["wall"])
     climb.save()
     if climb.grade != previous_grade or climb.tag != previous_tag:
-        # A corrected grade/tag changes what every send on the climb is
-        # worth; keep the board in step instead of waiting for a manual
-        # recalc.
+        # grade or tag changed so every send is worth something else now
         from .scoring import calculate_points
         for ascent in climb.ascents.all():
             fresh = calculate_points(
@@ -1362,8 +1314,8 @@ def climb_delete_api(request, climb_id):
 @user_passes_test(staff_check)
 @require_http_methods(["POST"])
 def climb_set_start_api(request):
-    """Draft a new set for one wall. It stays quiet until made current;
-    only a wall's very first set goes live straight away."""
+    """start a new set. it stays a draft until someone makes it current.
+    the first set on a wall goes live straight away"""
     try:
         data = json.loads(request.body)
     except (ValueError, TypeError, json.JSONDecodeError):
@@ -1374,9 +1326,8 @@ def climb_set_start_api(request):
     label = (data.get("label") or "").strip()
     if not label:
         label = f"{now():%B %Y}"
-    # A new set drafts quietly: it goes live only when someone hits
-    # "Make current". The exception is a wall's very first set, which
-    # must be live or nothing on the wall is loggable.
+    # first set on a wall has to go live or there is nothing to log sends
+    # against
     first = not ClimbSet.objects.filter(wall=wall).exists()
     climb_set = ClimbSet.objects.create(
         wall=wall, label=label, is_active=first)
@@ -1387,7 +1338,7 @@ NEWS_PER_PAGE = 5
 
 
 def news_view(request):
-    """Gym news, newest first, five to a page with buttons back."""
+    """gym news, 5 posts a page"""
     posts = NewsPost.objects.select_related("author").all()
     page = Paginator(posts, NEWS_PER_PAGE).get_page(request.GET.get("page"))
     return render(request, "climbs/news.html", {"page": page})
@@ -1440,12 +1391,9 @@ def news_delete_api(request, post_id):
 
 
 def manifest_view(request):
-    """Web app manifest: installable on iPhone and Android. Icon
-    files live under static (hashed in production, so resolve them
-    through the staticfiles storage for cache-busting names). The
-    manifest also lists itself as a related web app (never
-    preferred) so getInstalledRelatedApps() can report the
-    installed state back to the Install buttons."""
+    """the pwa manifest. icons come from staticfiles so the hashed prod
+    names work. related_applications lets the install buttons know if
+    the app is already installed"""
     from django.contrib.staticfiles.storage import staticfiles_storage
     from django.urls import reverse
     icons = [
@@ -1486,9 +1434,8 @@ def manifest_view(request):
 
 SERVICE_WORKER_JS = """\
 const CACHE = "summit-map-v4";
-// Same-origin static assets only: HTML/navigations are never cached
-// (authenticated pages must stay fresh), and neither are non-GET or
-// cross-origin requests.
+// only cache static files from our own site. never cache html because
+// it might have someones private data. skip non get and other origins
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
@@ -1531,8 +1478,8 @@ self.addEventListener("fetch", (event) => {
 
 
 def service_worker_view(request):
-    """Service worker source (served by Django, not a static file, so
-    its scope stays `/` and updates are never hashed away)."""
+    """serves sw.js from django so the scope stays / and updates dont
+    get a hashed name"""
     response = HttpResponse(
         SERVICE_WORKER_JS, content_type="application/javascript")
     response["Service-Worker-Allowed"] = "/"

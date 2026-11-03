@@ -1,3 +1,5 @@
+"""run the anticheat checks again for every user"""
+
 from django.core.management.base import BaseCommand
 
 from climbs.anticheat import recompute_all

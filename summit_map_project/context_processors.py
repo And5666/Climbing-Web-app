@@ -1,4 +1,4 @@
-"""Template context processors."""
+"""stuff that gets added to every template"""
 
 from datetime import timedelta
 
@@ -10,15 +10,14 @@ INSTALL_PROMPT_COOLDOWN = timedelta(days=1)
 
 
 def version(request):
-    """Expose the release version in one place: Summit vX in footers."""
+    """puts the version number in the footer"""
     return {"summit_version": VERSION}
 
 
 def install_prompt(request):
-    """Whether the PWA install nudge may appear on this page load:
-    authenticated users only, never when opted out, at most once per
-    day. The client adds its own checks (standalone mode, one
-    appearance per session, admin exclusions)."""
+    """decides if the install banner can show. only for logged in
+    users, not if they said never, and only once a day. the browser
+    side does some checks too"""
     show = False
     user = getattr(request, "user", None)
     if user is not None and user.is_authenticated:

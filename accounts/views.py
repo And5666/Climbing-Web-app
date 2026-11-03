@@ -24,7 +24,7 @@ STAT_RANGES = (("6", "6 months"), ("12", "12 months"), ("all", "All time"))
 
 
 def _month_window(end, n):
-    """n (year, month) keys ending at end, oldest first."""
+    """make n month keys going back from end, oldest first"""
     keys = []
     year, month = end.year, end.month
     for _ in range(n):
@@ -36,9 +36,8 @@ def _month_window(end, n):
 
 
 def _stats_months(user, metric, wall, months_back):
-    """Monthly series for the stats graph. Grade runs cumulative
-    (hardest to date, the progression curve); sends and points are
-    per-month counts, with quiet months shown as zero."""
+    """monthly numbers for the stats graph. grade is cumulative, sends
+    and points are per month. empty months show as zero"""
     ascents = user.ascents.filter(
         is_voided=False).select_related("climb").order_by("logged_at")
     if wall != "all":
@@ -72,6 +71,7 @@ def _stats_months(user, metric, wall, months_back):
         elif metric == "sends":
             value, display = bucket["sends"], str(bucket["sends"])
         else:
+            # grade graph shows the hardest grade so far, not the month
             running = max(running, bucket["best"])
             value = running
             display = f"V{running}" if running else "—"
@@ -88,7 +88,7 @@ def _stats_months(user, metric, wall, months_back):
 
 
 def _grade_distribution(user, wall):
-    """The user's sends stacked by grade, hardest last."""
+    """sends grouped by grade, hardest last"""
     ascents = user.ascents.filter(is_voided=False).select_related("climb")
     if wall != "all":
         ascents = ascents.filter(climb__wall=wall)
@@ -103,9 +103,8 @@ def _grade_distribution(user, wall):
 
 
 def _stats_highlights(user, wall):
-    """Headline tiles: flashes, average tries, hardest flash and the
-    most-sent grade (ties break to the harder grade). None when the
-    filter matches nothing."""
+    """the tiles at the top, flashes, avg tries, hardest flash and
+    favourite grade. none if the filter has no sends"""
     ascents = user.ascents.filter(
         is_voided=False).select_related("climb")
     if wall != "all":
@@ -136,8 +135,7 @@ WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 
 
 def _stats_weekdays(user, wall):
-    """Sends stacked by weekday, Monday first. Quiet days render as
-    zero bars; empty when the filter matches nothing."""
+    """sends by weekday, monday first"""
     ascents = user.ascents.filter(is_voided=False)
     if wall != "all":
         ascents = ascents.filter(climb__wall=wall)
@@ -153,8 +151,7 @@ def _stats_weekdays(user, wall):
 
 
 def _stats_tries(user, wall):
-    """Sends bucketed by effort: flashes, quick redpoints, grinds and
-    full projects. Empty when the filter matches nothing."""
+    """sends split into flash, quick, grind and project buckets"""
     ascents = user.ascents.filter(is_voided=False)
     if wall != "all":
         ascents = ascents.filter(climb__wall=wall)
@@ -178,7 +175,7 @@ def _stats_tries(user, wall):
 
 
 def _stats_milestones(user, wall):
-    """First-ever send at each grade, easiest first."""
+    """first send of each grade, easiest first"""
     ascents = user.ascents.filter(
         is_voided=False).select_related("climb").order_by("logged_at")
     if wall != "all":
@@ -199,15 +196,16 @@ def _stats_milestones(user, wall):
 
 
 def _wall_ranks(user):
-    """Rank/points of one user on each wall's active set."""
+    """rank and points for this user on every wall"""
     ranks = {}
     for wall, _display in WALL_CHOICES:
         climb_set = ClimbSet.active(wall)
         if climb_set is None:
             continue
-        # Same scoring as the leaderboard: one query per wall.
+        # use the same scoring as the board, one query per wall
         from climbs.views import _deal_positions, _leaderboard_rows
         board = _deal_positions(_leaderboard_rows(climb_set))
+        # find this user in the dealt rows
         position = next(
             (r["position"] for r in board
              if r["user__username"] == user.username),
@@ -273,9 +271,8 @@ def profile_view(request):
         is_voided=False).aggregate(sends=Count("id"), points=Sum("points"))
     ranks = _wall_ranks(request.user)
     password_form = PasswordChangeForm(request.user)
-    # Django autofocuses the current-password field, which yanks the
-    # page down to Change password on every visit and invites the
-    # browser to autofill. The graph lives on Full stats now.
+    # stop django autofocusing the password box, it scrolls the page
+    # down every time you open profile
     password_form.fields["old_password"].widget.attrs.pop(
         "autofocus", None)
     return render(request, "accounts/profile.html", {
@@ -321,10 +318,8 @@ def password_change_view(request):
 @login_required
 @require_POST
 def install_prompt_shown_api(request):
-    """Record a nudge appearance ("shown") or a "Maybe later":
-    both stamp last_shown so the banner rests until the next day.
-    The body is ignored beyond parsing — bad input still returns
-    JSON, never a 500."""
+    """the banner was shown or they hit maybe later. both count the same,
+    it goes away till tomorrow. bad json is ignored"""
     try:
         if request.body:
             import json
@@ -339,7 +334,7 @@ def install_prompt_shown_api(request):
 @login_required
 @require_POST
 def install_prompt_never_api(request):
-    """Permanent opt-out: "Don't show again", saved on the account."""
+    """dont show the banner again on this account"""
     request.user.install_prompt_dismissed = True
     request.user.save(update_fields=["install_prompt_dismissed"])
     return JsonResponse({"status": "ok", "dismissed": True})
@@ -348,9 +343,8 @@ def install_prompt_never_api(request):
 @login_required
 @require_POST
 def install_prompt_reset_api(request):
-    """Undo the opt-out from the profile page: reminders may show
-    again (subject to the usual daily cadence, so also clear the
-    last-shown stamp)."""
+    """turn the banner back on from the profile page. clear the last
+    shown date too so it can show straight away"""
     request.user.install_prompt_dismissed = False
     request.user.install_prompt_last_shown = None
     request.user.save(
@@ -369,6 +363,7 @@ def account_delete_view(request):
             messages.error(request, errors[0])
         return redirect("accounts:profile")
     username = request.user.username
+    # remove the avatar file first, then the user row cascades the rest
     if request.user.avatar:
         request.user.avatar.delete(save=False)
     request.user.delete()

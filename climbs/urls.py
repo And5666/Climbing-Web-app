@@ -4,17 +4,20 @@ from . import views
 app_name = "climbs"
 
 urlpatterns = [
+    # main pages
     path("", views.map_view, name="map"),
     path("manifest.webmanifest", views.manifest_view, name="manifest"),
     path("sw.js", views.service_worker_view, name="sw"),
     path("leaderboard/", views.leaderboard_view, name="leaderboard"),
     path("news/", views.news_view, name="news"),
+    # news api
     path("news/create/", views.news_create_api, name="news-create"),
     path("news/<int:post_id>/update/", views.news_update_api, name="news-update"),
     path("news/<int:post_id>/delete/", views.news_delete_api, name="news-delete"),
     path("climbers/<str:username>/", views.climber_api, name="climber-detail"),
     path("leaderboard/sets/<int:set_id>/users/<str:username>/sends/",
          views.set_user_sends_api, name="set-user-sends"),
+    # climb api
     path("<int:climb_id>/", views.climb_detail_api, name="climb-detail"),
     path("<int:climb_id>/ascent/", views.ascent_api, name="climb-ascent"),
     path("<int:climb_id>/rate/", views.rating_api, name="climb-rate"),
@@ -22,6 +25,7 @@ urlpatterns = [
     path("<int:climb_id>/comments/", views.comment_create_api, name="climb-comment"),
     path("<int:climb_id>/comments/<int:comment_id>/delete/",
          views.comment_delete_api, name="climb-comment-delete"),
+    # staff admin tools
     path("admin-tools/climbs/", views.climb_admin_view, name="climb-admin"),
     path("admin-tools/boards/", views.board_admin_view, name="board-admin"),
     path("admin-tools/climbs/create/", views.climb_create_api, name="climb-create"),

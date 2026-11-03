@@ -5,11 +5,11 @@ from django.core.files.uploadedfile import UploadedFile
 
 User = get_user_model()
 
-MAX_AVATAR_BYTES = 5 * 1024 * 1024  # safety net; the page downscales first
+MAX_AVATAR_BYTES = 5 * 1024 * 1024  # backup limit, the page shrinks first
 
 
 def image_kind(upload):
-    """Identify jpeg/png/gif by magic bytes. No Pillow available."""
+    """work out if its a jpg png or gif by the first bytes"""
     head = upload.read(8)
     try:
         upload.seek(0)
@@ -32,11 +32,9 @@ class ProfileForm(forms.ModelForm):
     )
     avatar = forms.FileField(
         required=False, help_text="JPG, PNG or GIF.",
-        # Plain input, not ClearableFileInput: "Currently / Clear /
-        # Change" is replaced by the single "Remove photo" button.
+        # normal input, the remove photo button handles deleting
         widget=forms.FileInput)
-    # Driven by the single "Remove photo" button (a hidden flag the
-    # button toggles), never shown as its own control.
+    # set by the remove photo button, never shown on its own
     remove_avatar = forms.BooleanField(
         required=False, widget=forms.HiddenInput)
 
@@ -52,9 +50,8 @@ class ProfileForm(forms.ModelForm):
 
     def clean_avatar(self):
         avatar = self.cleaned_data.get("avatar")
-        # Only fresh uploads are validated: with no new file the
-        # field carries the stored file, which may no longer exist
-        # on disk — touching it must not 500 the profile save.
+        # only check new uploads. the old file can be missing from disk
+        # and checking it would 500 the save
         if not avatar or not isinstance(avatar, UploadedFile):
             return avatar
         if avatar.size > MAX_AVATAR_BYTES:
@@ -64,16 +61,15 @@ class ProfileForm(forms.ModelForm):
         return avatar
 
     def save(self, commit=True):
-        # Remove the orphaned file when the avatar is replaced or
-        # cleared via the "Remove photo" button. A fresh upload
-        # always wins over the removal flag.
+        # delete the old avatar if its being replaced or removed. a new
+        # upload always wins over the remove button
         old = None
         if self.instance.pk:
             old = User.objects.filter(pk=self.instance.pk).values_list(
                 "avatar", flat=True).first()
         user = super().save(commit=False)
-        # With no fresh upload the field carries the stored FieldFile,
-        # which is truthy — only a real upload beats the checkbox.
+        # with no new upload the field holds the old file and is truthy,
+        # so only a real upload should beat the checkbox
         fresh_upload = isinstance(
             self.cleaned_data.get("avatar"), UploadedFile)
         if self.cleaned_data.get("remove_avatar") and not fresh_upload:
@@ -82,9 +78,8 @@ class ProfileForm(forms.ModelForm):
             user.save()
         new = user.avatar.name if user.avatar else None
         if old and old != new and user.avatar.storage.exists(old):
-            # The file may already be gone (e.g. the volume was
-            # wiped while the database row survived): deleting a
-            # missing file must not 500 the profile save.
+            # file might already be gone if the volume was wiped, dont
+            # error on that
             user.avatar.storage.delete(old)
         return user
 

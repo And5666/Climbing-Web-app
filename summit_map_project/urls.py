@@ -14,12 +14,9 @@ urlpatterns = [
     path("accounts/signup/", SignupView.as_view(), name="signup"),
 ]
 
-# Avatars are served by Django itself: there is no separate web server
-# in front, and at this scale the tiny images cost nothing. Uploads
-# are magic-byte validated images, so nothing executable can land here.
-# This must not use static(): that helper adds nothing when DEBUG is
-# off, which 404s every avatar on the live container. MEDIA_ROOT is
-# read per request so tests can point it at a temp dir.
+# avatars are served by django because there is no web server in front.
+# dont swap this for static(), that 404s when debug is off. media root
+# is read per request so the tests can point it at a temp dir
 def serve_media(request, path):
     return serve(request, path, document_root=settings.MEDIA_ROOT)
 

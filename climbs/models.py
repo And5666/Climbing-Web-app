@@ -12,9 +12,8 @@ TAG_CHOICES = [
 ]
 TAG_VALUES = [slug for slug, _ in TAG_CHOICES]
 
-# Circuit bands: each tag covers two grades (the ends narrow to one,
-# project covers V8+). Mystery can be any grade — its true grade stays
-# hidden until the setters reveal it the following week.
+# each tag covers a couple of grades. the ends only get one, project
+# covers V8 and up. mystery can be any grade and stays hidden for a week
 TAG_GRADE_NUMBERS = {
     'white': (0, 1),
     'black': (1, 2),
@@ -27,8 +26,8 @@ TAG_GRADE_NUMBERS = {
     'mystery': tuple(range(0, 11)),
 }
 
-# Mystery climbs stay hidden for a week, then take the lower tag when
-# their grade sits on the edge of two circuits (V4 -> green, not blue).
+# mystery climbs hide the grade for a week. if the grade sits between
+# two tags it takes the lower one, so V4 becomes green not blue
 MYSTERY_REVEAL_DAYS = 7
 
 GRADES_BY_TAG = {
@@ -45,45 +44,41 @@ for _tag, _grades in GRADES_BY_TAG.items():
 
 
 def grades_for_tag(tag):
-    """Grade labels one tag may represent (mystery allows any grade)."""
+    """the grades this tag can be"""
     return list(GRADES_BY_TAG.get(tag, []))
 
 
 def tag_supports_grade(tag, grade):
-    """True when a climb may wear `tag` at `grade`."""
+    """true if this tag and grade pair is allowed"""
     return grade in GRADES_BY_TAG.get(tag, [])
 
 
 def tag_for_grade(grade):
-    """The circuit tag a revealed grade belongs to.
-
-    A grade can sit in two bands (V4 is green and blue). The lower
-    band wins, so V4 -> green, V1 -> white, V2 -> black, V5 -> blue.
-    Returns None for an unknown grade.
-    """
+    """the tag a grade belongs to. grades on a border belong to two
+    tags, we take the lower one. V4 goes green, V5 goes blue. none if
+    the grade is unknown"""
     tags = TAGS_BY_GRADE.get(grade) or []
     return tags[0] if tags else None
 
 
 def grade_number(grade):
-    """'V10' -> 10. Returns None for unparseable grades."""
+    """V10 becomes 10. none if it cant be read"""
     try:
         return int(str(grade).lstrip('Vv'))
     except (TypeError, ValueError):
         return None
 
 
-# Marker space: climbs are stored in the overlay's own 256x512 viewBox
-# units (the "x/y_percent" field names are historical). Do not change
-# this coordinate system.
+# markers use the overlay viewbox, 256 by 512. the x_percent names are
+# old, its not a percent anymore. dont change this
 WALL_MAP_WIDTH = 256
 WALL_MAP_HEIGHT = 512
 MARKER_RADIUS = 7
 
 
 def clamp_to_wall(x, y, radius=MARKER_RADIUS):
-    """Clamp a marker position inside the wall bounds, keeping the
-    whole marker (minus nothing) visible: x in [r, W-r]."""
+    """keep a marker inside the wall. the whole circle stays in view so
+    x sits between r and width minus r"""
     try:
         x = float(x)
     except (TypeError, ValueError):
@@ -97,10 +92,8 @@ def clamp_to_wall(x, y, radius=MARKER_RADIUS):
     return (x, y)
 
 
-# Tape colours: (name, hex), grouped in families with several shades
-# each. The stored value is the NAME for presets (or a raw hex for
-# legacy/custom picks, which keep working as plain CSS colours).
-# Boards, stats and logs always show the name, never a raw hex.
+# tape colours, name and hex. we store the name for presets but old
+# climbs can have a raw hex and those still work. pages show the name
 TAPE_COLOURS = [
     ("white", "#f5f5f0"),
     ("pure white", "#ffffff"),
@@ -153,7 +146,7 @@ TAPE_COLOURS = [
     ("dark pink", "#a61e4d"),
 ]
 
-# Family groups for the admin swatch picker, in display order.
+# groups for the admin colour picker
 TAPE_FAMILIES = [
     ("White", ["white", "pure white", "cream"]),
     ("Grey", ["light grey", "grey", "dark grey", "charcoal"]),
@@ -187,10 +180,9 @@ def _hex_to_rgb(text):
 
 
 def colour_display_name(value):
-    """Human name for a stored colour ("orange", never "#c9265f").
-    Known preset names and hexes resolve exactly; any other hex
-    resolves to the nearest preset by RGB distance, so text labels
-    never show a raw hex. Non-colour values pass through unchanged."""
+    """readable name for a colour, orange instead of #c9265f. known
+    names and hexes match exactly, anything else picks the closest
+    preset. values that are not a colour are left alone"""
     if value is None:
         return ""
     key = str(value).strip().lower()
@@ -210,8 +202,8 @@ def colour_display_name(value):
 
 
 def colour_text_on(value):
-    """Grade-text colour inside a marker circle: black or white,
-    whichever contrasts with the tape colour."""
+    """black or white text for the marker, whichever shows up better on
+    the tape colour"""
     hex_value = TAPE_COLOUR_HEX.get(str(value).strip().lower(), value)
     try:
         r, g, b = _hex_to_rgb(hex_value)
@@ -222,8 +214,8 @@ def colour_text_on(value):
 
 
 class ClimbSet(models.Model):
-    """One setting cycle for one wall. Only one set per wall is active at a
-    time; leaderboards are scored per set so old boards stay viewable."""
+    """one setting cycle on one wall. only one set per wall is live at a
+    time and each set keeps its own leaderboard"""
     wall = models.CharField(max_length=10, choices=WALL_CHOICES)
     label = models.CharField(max_length=100)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -241,8 +233,8 @@ class ClimbSet(models.Model):
 
     @property
     def short_label(self):
-        """Set label without the wall-name prefix (labels used to be
-        stored as 'Main Wall — September 2026')."""
+        """label without the wall name. old labels had the wall name in
+        front of the month"""
         prefix = f"{self.get_wall_display()} — "
         if self.label.startswith(prefix):
             return self.label[len(prefix):]
@@ -288,8 +280,8 @@ class Climb(models.Model):
 
     @property
     def display_grade(self):
-        """Grade shown to climbers: mystery climbs hide their grade
-        behind '?' until the setters reveal it the following week."""
+        """grade the climber sees. mystery climbs show a ? until the
+        reveal"""
         if self.tag == 'mystery':
             return '?'
         return self.grade
@@ -300,23 +292,21 @@ class Climb(models.Model):
 
     @property
     def tag_class(self):
-        """CSS class for the climb's circuit tag colour. The tag is a
-        per-climb attribute, independent of grade: a V3 can wear red
-        or green depending on how it was set."""
+        """css class for the tag colour. tag comes from the climb not the
+        grade, a V3 can be red or green"""
         if self.tag not in TAG_VALUES:
             return 'tag-mystery'
         return f'tag-{self.tag}'
 
     @property
     def colour_name(self):
-        """Human tape name ("orange", never a raw hex) for boards,
-        stats and logs. The stored value still renders the swatch."""
+        """readable tape name for boards, stats and logs"""
         return colour_display_name(self.colour)
 
     @property
     def colour_hex(self):
-        """Renderable colour: the preset hex for names ("sky blue"
-        is not a valid CSS colour), the stored value otherwise."""
+        """the hex to actually draw. names like sky blue are not valid
+        css so they get looked up"""
         return TAPE_COLOUR_HEX.get(
             str(self.colour).strip().lower(), self.colour)
 
@@ -327,16 +317,15 @@ class Ascent(models.Model):
     tries = models.PositiveIntegerField()
     points = models.PositiveIntegerField(blank=True, null=True)
     logged_at = models.DateTimeField(auto_now_add=True)
-    # Moderation: voided ascents stay in logs but score nothing and
-    # appear on no leaderboard.
+    # voided sends stay in the log but score nothing
     is_voided = models.BooleanField(default=False)
     void_reason = models.CharField(max_length=280, blank=True, default="")
 
     def save(self, *args, **kwargs):
         if self.points is None:
             from .scoring import calculate_points
-            # Official setter grade only — never the community
-            # suggestion — so points can't be gamed by suggestions.
+            # always use the setter grade, not the voted one, or people
+            # could bump there own points
             self.points = calculate_points(
                 self.climb.grade, self.tries, self.climb.tag)
         super().save(*args, **kwargs)
@@ -346,9 +335,8 @@ class Ascent(models.Model):
 
 
 class AscentAudit(models.Model):
-    """Every create, edit and delete of an ascent: who, when, and the
-    old/new tries/grade/points. Timestamps are server-side
-    (auto_now_add); client timestamps are never trusted."""
+    """one row for every send create, edit or delete. records the old
+    and new values. times come from the server only"""
     ACTION_CHOICES = [
         ("create", "create"), ("edit", "edit"), ("delete", "delete"),
         ("void", "void"), ("unvoid", "unvoid"),
@@ -383,9 +371,8 @@ class AscentAudit(models.Model):
 
 
 class Flag(models.Model):
-    """One anti-cheat finding, for staff review only. Never shown to
-    normal users and never auto-punishing: every status change is a
-    deliberate staff action with a note."""
+    """one anticheat finding. staff only, nothing happens automatic.
+    every status change is done by staff with a note"""
     SEVERITIES = [("low", "low"), ("medium", "medium"), ("high", "high")]
     STATUSES = [("open", "open"), ("reviewed", "reviewed"),
                 ("dismissed", "dismissed"), ("confirmed", "confirmed")]
@@ -415,8 +402,7 @@ class Flag(models.Model):
 
 
 class ModerationLog(models.Model):
-    """Staff action ledger: every flag review, void/unvoid, hide/unhide
-    and board removal lands here with a note."""
+    """staff action log. flag reviews, voids, hides and removals go here"""
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name="moderation_actions")
@@ -454,8 +440,7 @@ class Rating(models.Model):
 
 
 class NewsPost(models.Model):
-    """Gym news (upcoming set dates, events...). Newest first;
-    staff post from the news page itself."""
+    """gym news posts, newest first. staff post from the news page"""
     title = models.CharField(max_length=200)
     body = models.TextField(max_length=5000)
     author = models.ForeignKey(

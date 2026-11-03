@@ -1,3 +1,5 @@
+"""fix any old markers that ended up off the wall"""
+
 from django.core.management.base import BaseCommand
 
 from climbs.models import Climb, clamp_to_wall

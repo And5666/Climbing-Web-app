@@ -1,43 +1,18 @@
-"""Points for a logged send.
+"""points for a send.
 
-points = grade_base[grade] x tries_multiplier[tries], rounded to int.
+points = grade base times the tries multiplier, rounded to a whole
+number. the grade mode and tries table are both in settings so they
+can be changed together. points always use the setter grade, not the
+grade people voted for, or votes could bump the score.
 
-Both halves of the formula live in ONE config location in
-``summit_map_project/settings.py`` so they can be retuned together:
-
-* ``POINTS_GRADE_MODE`` — one of ``"flat"``, ``"gentle"`` (default)
-  or ``"linear"``:
-
-  - ``"flat"``: every grade scores 300.
-  - ``"gentle"`` (default): 200 + 50 x V-number
-    (V0=200 ... V4=400 ... V8=600).
-  - ``"linear"``: 100 x (V-number + 1) (V0=100 ... V4=500 ...).
-
-* ``POINTS_TRIES_MULTIPLIERS`` — one line mapping tries -> multiplier:
-
-  ``{1: 1.00, 2: 0.99, 3: 0.98, 4: 0.96, 5: 0.94}``
-
-  Tries at or above the highest key all score the table's last value
-  (hard floor, never lower): 6 tries and 40 tries score the same.
-  The floor stays high enough that, under the ``"gentle"`` and
-  ``"linear"`` grade modes, any grade sent at 5+ tries still outscores
-  a flash one grade below it (grade always beats tries): keep the
-  floor above ~0.93 when retuning, or that guarantee breaks.
-
-Points always use the climb's OFFICIAL (setter) grade — never the
-community-suggested grade — so suggestions can't inflate scores.
-
-Mystery climbs (tag ``"mystery"``) and climbs with an unparseable grade
-score one flat amount (``MYSTERY_FIXED_POINTS``), exactly as before:
-no flash bonus, no try penalty, until the grade is known.
+mystery climbs and weird grades just get a flat amount until the grade
+is known.
 """
 
 from django.conf import settings
 
-# Mystery climbs award one flat amount while their grade is hidden —
-# no flash bonus, no try penalty — until the setters reveal the grade
-# the following week (later sends then score normally). Unparseable
-# grades fall back to the same flat amount.
+# flat score while the grade is hidden. normal scoring starts after the
+# reveal
 MYSTERY_FIXED_POINTS = 300
 
 DEFAULT_TRIES_MULTIPLIERS = {1: 1.00, 2: 0.99, 3: 0.98, 4: 0.96, 5: 0.94}
@@ -58,7 +33,7 @@ def _grade_mode_and_table(grade_mode=None, tries_table=None):
 
 
 def grade_base_points(grade, grade_mode=None):
-    """Base points for an official grade under one grade mode."""
+    """base points for a grade"""
     from .models import grade_number
 
     mode, _ = _grade_mode_and_table(grade_mode=grade_mode)
@@ -66,7 +41,7 @@ def grade_base_points(grade, grade_mode=None):
         mode = DEFAULT_GRADE_MODE
     number = grade_number(grade)
     if number is None:
-        # Unrated / unparseable grade: flat amount, same as mystery.
+        # bad grade, same flat score as mystery
         return MYSTERY_FIXED_POINTS
     if mode == "flat":
         return 300
@@ -76,8 +51,8 @@ def grade_base_points(grade, grade_mode=None):
 
 
 def tries_multiplier(tries, tries_table=None):
-    """Multiplier for a try count. Tries at/above the top key take the
-    top key's value (hard floor, never lower)."""
+    """multiplier for the try count. anything above the top key gets the
+    top value, never lower"""
     _, table = _grade_mode_and_table(tries_table=tries_table)
     try:
         top = max(table)
@@ -93,20 +68,15 @@ def tries_multiplier(tries, tries_table=None):
         return table[top]
     if count in table:
         return table[count]
-    # A gap in a custom table: take the nearest lower key's value.
+    # gap in a custom table, use the next key down
     lower = [key for key in table if key <= count]
     return table[max(lower)] if lower else table[top]
 
 
 def calculate_points(grade, tries, tag=None,
                      grade_mode=None, tries_table=None):
-    """Points for sending `grade` in `tries` goes.
-
-    `tag="mystery"` (or an unparseable grade) scores the flat mystery
-    amount. Everything else is grade_base x tries_multiplier, rounded.
-    `grade_mode` / `tries_table` override the configured values and
-    exist so tests can exercise modes without touching settings.
-    """
+    """work out the points for one send. mystery or a bad grade gets the
+    flat amount. the grade mode and table args are for tests"""
     if tag == "mystery":
         return MYSTERY_FIXED_POINTS
     base = grade_base_points(grade, grade_mode=grade_mode)

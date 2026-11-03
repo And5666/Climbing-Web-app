@@ -1,18 +1,10 @@
-"""Anti-cheat flagging (staff review only, never auto-punishing).
+"""anticheat checks. this only makes flags for staff to look at, it
+never punishes anyone on its own. all the thresholds are in the
+ANTI_CHEAT dict in settings.
 
-Every threshold lives in the ONE ``ANTI_CHEAT`` dict in settings.
-Statistical (peer-comparison) rules only fire once
-``min_users_for_peer_stats`` users exist; below that the absolute
-thresholds alone apply.
-
-Entry points:
-
-* :func:`refresh_user_flags` — delete a user's open flags and
-  regenerate them. Called on ascent create/delete and by the
-  ``recompute_flags`` management command.
-* :func:`recompute_all` — refresh every user with ascents.
-* :func:`suspicion_score` — sum of a user's open flag points, capped.
-* :func:`rate_limited` — basic ascent-logging rate limit.
+the main entry is refresh_user_flags, which wipes the open flags for a
+user and makes them again. the other bits are recompute_all,
+suspicion_score and rate_limited.
 """
 
 import math
@@ -49,7 +41,7 @@ def get_config():
 
 
 def suspicion_score(user):
-    """Sum of the user's OPEN flag points, capped at 100."""
+    """add up the open flag points, max 100"""
     cfg = get_config()
     total = (Flag.objects.filter(user=user, status="open")
              .aggregate(total=Sum("points"))["total"] or 0)
@@ -57,7 +49,7 @@ def suspicion_score(user):
 
 
 def rate_limited(user):
-    """True when the user already logged the hourly max (prevention)."""
+    """true if they hit the hourly send limit"""
     cfg = get_config()
     limit = cfg.get("ascent_rate_limit_per_hour", 30)
     since = now() - timedelta(hours=1)
@@ -102,7 +94,7 @@ def _rule_high_flash_rate(user, ascents, cfg, peers_ok):
             return flags
     if not peers_ok:
         return flags
-    # Far above peers at the same grade, grade by grade.
+    # compare against other people at the same grade
     margin = cfg.get("flash_rate_peer_margin", 0.40)
     min_sends = cfg.get("flash_rate_min_grade_sends", 3)
     by_grade = {}
@@ -249,8 +241,7 @@ def _rule_impossible_pace(user, ascents, cfg, peers_ok):
     del peers_ok
     flags = []
     min_gap = cfg.get("minutes_per_attempt", 2.0) * 60
-    # A batch-logged session trips every consecutive pair: report the
-    # whole run as one combined flag, not one flag per pair.
+    # one flag for the whole run, not one for every pair
     rushed = []
     for prev, cur in zip(ascents, ascents[1:]):
         gap = (cur.logged_at - prev.logged_at).total_seconds()
@@ -397,7 +388,7 @@ def _rule_rapid_rank_jump(user, ascents, cfg, peers_ok):
         flags.append(_make(
             user, RULE_RAPID_RANK_JUMP, severity, points,
             {"summary": summary, "points_24h": day_points}))
-    # New account (< N days) reaching the top 3 of any active board.
+    # new account straight into the top 3
     age_days = (now() - user.date_joined).days
     if age_days < cfg.get("new_account_days", 7):
         from .models import ClimbSet
@@ -428,7 +419,7 @@ def _day_key(dt):
 
 
 def _sessions_by_day(ascents):
-    """Group ascents into per-day sessions (London time)."""
+    """split sends into days using london time"""
     by_day = {}
     for a in ascents:
         by_day.setdefault(_day_key(a.logged_at), []).append(a)
@@ -495,8 +486,7 @@ def _rule_grade_pace_floor(user, ascents, cfg, peers_ok):
     flags = []
     base = cfg.get("grade_pace_base_minutes", 1.5) * 60
     per_grade = cfg.get("grade_pace_per_grade_minutes", 0.5) * 60
-    # Same batch-logging problem as impossible pace: one combined
-    # flag per user, with the fastest pair called out up front.
+    # one flag for the whole batch, with the fastest pair called out
     rushed = []
     for prev, cur in zip(ascents, ascents[1:]):
         g = grade_number(cur.climb.grade)
@@ -682,7 +672,7 @@ RULES = (
 
 
 def run_all_rules(user):
-    """Evaluate every rule for one user; returns unsaved Flags."""
+    """run every rule for one user and return the flags"""
     cfg = get_config()
     ascents = _live_ascents(user)
     if not ascents and not AscentAudit.objects.filter(user=user).exists():
@@ -699,8 +689,8 @@ def run_all_rules(user):
 
 
 def refresh_user_flags(user):
-    """Delete the user's open flags and regenerate them. Reviewed,
-    dismissed and confirmed flags are history and stay untouched."""
+    """delete open flags and make them again. reviewed and dismissed
+    ones are history so leave them"""
     Flag.objects.filter(user=user, status="open").delete()
     found = run_all_rules(user)
     Flag.objects.bulk_create(found)
@@ -708,7 +698,7 @@ def refresh_user_flags(user):
 
 
 def recompute_all():
-    """Refresh flags for every user with ascents or audit history."""
+    """run the checks for every user that has sends or audit rows"""
     from django.contrib.auth import get_user_model
     User = get_user_model()
     user_ids = set(Ascent.objects.values_list("user_id", flat=True))

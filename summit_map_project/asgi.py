@@ -1,11 +1,4 @@
-"""
-ASGI config for summit_map_project project.
-
-It exposes the ASGI callable as a module-level variable named ``application``.
-
-For more information on this file, see
-https://docs.djangoproject.com/en/6.1/howto/deployment/asgi/
-"""
+"""asgi entry point. not used in the docker setup but django makes it"""
 
 import os
 

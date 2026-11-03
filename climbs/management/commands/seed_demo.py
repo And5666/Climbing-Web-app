@@ -1,7 +1,7 @@
-"""Seed five months of demo history per wall: sets, climbs on the wall,
-crew sends, ratings, comments and grade votes. Playground data only —
-refuses to run when climbing data already exists unless --reset is
-given (user accounts are always kept)."""
+"""make 5 months of fake history on each wall. sets, climbs, sends,
+ratings, comments and votes. its only for testing. it wont run if
+there is already climbing data unless you pass --reset. user accounts
+are always kept."""
 
 import random
 from datetime import datetime
@@ -28,9 +28,7 @@ MONTHS = 5
 CLIMBS_PER_SET = 9
 
 def _tag_for_grade(grade_num):
-    """One of the tags covering a grade number (white V0–V1, black
-    V1–V2, red V2–V3, green V3–V4, blue V4–V5, yellow V5–V6, orange
-    V6–V7, project V8+)."""
+    """pick a tag wich covers this grade number"""
     return TAGS_BY_GRADE[f"V{grade_num}"][0]
 COLOURS = ["red", "blue", "yellow", "green", "purple", "orange",
            "pink", "white", "black", "lime", "teal", "cyan",
@@ -101,7 +99,7 @@ class Command(BaseCommand):
                     wall=wall, label=label, is_active=live)
                 ClimbSet.objects.filter(id=climb_set.id).update(
                     created_at=stamp)
-                # The crew improves over time: harder grades creep in.
+                # the fake crew gets better over the months
                 grades = [0, 1, 2, 2, 3, 3, 4, 4 + pos // 2, 5 + pos // 2]
                 for slot in range(CLIMBS_PER_SET):
                     grade_num = min(grades[slot % len(grades)], 8)
@@ -118,9 +116,7 @@ class Command(BaseCommand):
                         y_percent=round(min(max(y, 8), MAP_HEIGHT - 8), 1),
                     )
                     Climb.objects.filter(id=climb.id).update(date_set=stamp.date())
-                # The weekly mystery tags: any hidden grade, flat
-                # points and no harder/softer votes until revealed.
-                # Live sets carry two; archived sets keep one each.
+                # mystery climbs. live sets get 2, old sets keep 1
                 spots = (("Mystery Box", 128, 450),
                          ("Mystery Machine", 190, 430)) if live else (
                          ("Mystery Box", 128, 450),)
@@ -176,7 +172,7 @@ class Command(BaseCommand):
         return users
 
     def _sends(self, rng, crew, climb_set, year, month, live):
-        # Recent sets get heavy traffic; old ones a scattering.
+        # live set gets lots of sends, old sets only get a few
         chance = 0.8 if live else 0.3
         for climb in climb_set.climbs.all():
             difficulty = int(climb.grade.lstrip("V")) / 10

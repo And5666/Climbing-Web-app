@@ -1,3 +1,5 @@
+"""reveal mystery climbs that are old enough"""
+
 from django.core.management.base import BaseCommand
 
 from climbs.services import reveal_due_mystery_climbs

@@ -1,35 +1,13 @@
-/* Shared wall pan/zoom + marker helpers, used by BOTH the main map
-   and the admin wall so the two pages can never drift apart again.
-   No external dependency: one controller owns a single transform
-   (translate + scale, transform-origin 0 0) on the one container
-   holding the photo and the SVG overlay, so they can never desync.
-
-   Root causes of the old main-page glitch, fixed here by
-   construction:
-   - the old code transformed the outer stack while hit-testing in
-     screen space, and fired re-entrant moveTo nudges mid-gesture, so
-     zooming into a corner jumped the image off-screen;
-   - pan bounds were the library's, computed against stale box sizes.
-
-   Behaviour:
-   - wheel zooms around the pointer, pinch zooms around the pinch
-     centre; double-tap zooms in (toggles back out when deep);
-   - min scale fits the content to the container, max is 8x;
-   - pan is clamped after EVERY update: content smaller than the
-     viewport on an axis is centred, otherwise edges stay inside;
-   - pointer events throughout, touch-action none on the container,
-     non-passive wheel listener, updates batched with
-     requestAnimationFrame, no CSS transitions while gesturing;
-   - taps are never captured: pointer capture waits for a real drag,
-     so the marker under the finger still gets its pointerup;
-   - bounds recomputed on resize, orientation change, window load
-     and any image load inside the viewport. */
+/* shared pan and zoom for the map and the admin wall so they dont act
+   diffrent. one transform with transform-origin 0 0 on the wrapper
+   keeps the photo and the svg overlay together. wheel and pinch zoom,
+   double tap zooms in, pan gets clamped after every move. taps still
+   reach the markers. */
 (function () {
     'use strict';
 
     var MAX_SCALE = 8;
-    // Even fully zoomed out the wall can be pushed around: this
-    // many px of give beyond the edge on every side.
+    // how far you can push past the edge when zoomed right out
     var OVERSCROLL = 96;
 
     function clampScale(s, min) {
@@ -40,8 +18,7 @@
         var viewport = opts.viewport;
         var content = opts.content;
         var onTransform = opts.onTransform || null;
-        // Precision surfaces (the admin editor) opt out of double-tap
-        // zoom: hurried taps must never reframe the wall mid-edit.
+        // the admin editor turns this off so quick taps dont zoom
         var allowDoubleTap = opts.doubleTap !== false;
 
         var state = {scale: 1, x: 0, y: 0};
@@ -58,8 +35,7 @@
 
         viewport.style.touchAction = 'none';
         content.style.transformOrigin = '0 0';
-        // No CSS transitions on the scene, ever: they run during
-        // gestures and fight the pointer, which reads as a jump.
+        // no transitions here, they fight the pointer and feel jumpy
         content.style.transition = 'none';
 
         function sizes() {
@@ -73,18 +49,13 @@
 
         function minScale() {
             var s = sizes();
-            // Fit-to-container, plus a little extra room to zoom
-            // out: the whole wall with some space around it (the
-            // content box already fills the viewport at scale 1, so
-            // the fit is 1 except in odd aspect boxes).
+            // fit the wall in the box but let it go a bit smaller
             return 0.8 * Math.min(1, s.vw / s.cw, s.vh / s.ch);
         }
 
         function clampPan() {
-            // Clamp after EVERY update. Smaller than the viewport on
-            // an axis: rest centred, with a little overscroll give so
-            // the wall never feels frozen when zoomed out. Larger:
-            // keep the edges inside, with the same give.
+            // run this after every move. if the wall is smaller than the
+            // box it sits in the middle, if its bigger keep the edges inside
             var s = sizes();
             var w = s.cw * state.scale;
             var h = s.ch * state.scale;
@@ -120,8 +91,7 @@
         }
 
         function refresh() {
-            // Recompute bounds (resize / orientation / image load):
-            // keep the scale, re-clamp the pan, repaint once.
+            // window or image changed size, keep the zoom and redraw
             state.scale = clampScale(state.scale, minScale());
             schedule();
         }
@@ -133,8 +103,7 @@
             var old = state.scale;
             var next = clampScale(old * factor, minScale());
             if (next === old) return;
-            // Zoom around the pointer: the content point under the
-            // cursor stays under the cursor.
+            // keep the bit under the cursor under the cursor
             var cx = (px - state.x) / old;
             var cy = (py - state.y) / old;
             state.scale = next;
@@ -153,8 +122,7 @@
         }
 
         function reset() {
-            // The default view: minimum (fit) scale, wall centred in
-            // the viewport. Used by the map's "Fit wall" control.
+            // fit wall button
             var s = sizes();
             state.scale = minScale();
             state.x = (s.vw - s.cw * state.scale) / 2;
@@ -163,8 +131,7 @@
         }
 
         function setView(scale, x, y) {
-            // Restoring a saved view (filter reload): clamp it to the
-            // current viewport instead of trusting stale numbers.
+            // restoring a saved view so clamp the old numbers to this box
             state.scale = clampScale(
                 Number(scale) || minScale(), minScale());
             state.x = Number(x) || 0;
@@ -180,10 +147,7 @@
 
         viewport.addEventListener('pointerdown', function (e) {
             if (!panEnabled) return;
-            // No capture yet: grabbing the pointer here would
-            // retarget the pointerup to the viewport and markers
-            // would never receive their tap. Capture only once the
-            // pointer has clearly started a drag (see pointermove).
+            // dont capture yet or markers never recieve there tap
             pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
             if (pointers.size === 1) {
                 moved = 0;
@@ -207,13 +171,14 @@
             pointers.set(e.pointerId, {x: e.clientX, y: e.clientY});
             moved += Math.abs(dx) + Math.abs(dy);
             if (!captured[e.pointerId] && moved > 12) {
+                // only capture once its a real drag
                 try {
                     viewport.setPointerCapture(e.pointerId);
                     captured[e.pointerId] = true;
                 } catch (err) { /* older browsers: track anyway */ }
             }
             if (pointers.size === 2) {
-                // Pinch: zoom around the pinch centre, pan with it.
+                // pinch zoom around the pinch centre
                 var pts = Array.from(pointers.values());
                 var dist = Math.hypot(
                     pts[0].x - pts[1].x, pts[0].y - pts[1].y);
@@ -266,8 +231,7 @@
         viewport.addEventListener('pointerup', endPointer);
         viewport.addEventListener('pointercancel', forgetPointer);
 
-        // Non-passive so the page never scrolls/zooms under us.
-        // Calm factor: full-speed wheel deltas jump at deep zoom.
+        // stop the page scrolling and slow the wheel down a bit
         viewport.addEventListener('wheel', function (e) {
             e.preventDefault();
             var delta = Math.max(-80, Math.min(80, e.deltaY || 0));
@@ -301,10 +265,8 @@
         };
     }
 
-    /* Markers hold a steady on-screen size while zoomed (softer
-       counter-scale): the grade label scales in lockstep with the
-       ring and the invisible hit circle keeps a constant on-screen
-       size so markers stay finger-tappable at any zoom. */
+    /* markers stay about the same size on screen when you zoom. the
+       label and hit circle shrink with the ring so taps still work */
     var BASE_R = 7, BASE_FONT = 7, BASE_STROKE = 1.2, HIT_R = 20;
 
     function rescaleMarkers(root, scale) {
@@ -342,8 +304,7 @@
                     parseInt(hex.slice(2, 4), 16),
                     parseInt(hex.slice(4, 6), 16)];
         }
-        // Any other CSS colour name: let the browser resolve it once
-        // through a canvas-free computed style probe.
+        // other css colour names, let the browser work it out
         try {
             var el = document.createElement('span');
             el.style.color = raw;
@@ -358,9 +319,8 @@
         return null;
     }
 
-    /* Grade text inside the marker circle picks black or white for
-       contrast against any tape colour. extraHexes maps preset names
-       (e.g. {"orange": "#f08c00"}) so names resolve without a probe. */
+    /* pick black or white text depending on the tape colour. extraHexes
+       turns names like orange into there hex */
     function applyMarkerContrast(root, extraHexes) {
         root.querySelectorAll('.climb-marker').forEach(function (m) {
             var dot = m.querySelector('.climb-dot') ||
@@ -375,8 +335,7 @@
         });
     }
 
-    /* Overlapping markers behave predictably: the hovered/pressed
-       marker comes to the front (SVG paints document order). */
+    /* move the marker you tapped to the top */
     function bringToFront(marker) {
         if (marker && marker.parentNode) {
             marker.parentNode.appendChild(marker);

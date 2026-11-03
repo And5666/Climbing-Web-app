@@ -3,15 +3,13 @@ from django.db import models
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
-    # Exclude from public leaderboards while a review is open.
-    # Staff-only flag; the user still sees their own totals.
+    # hides the user from public boards while staff look into their logs.
+    # they still see there own totals
     leaderboard_hidden = models.BooleanField(default=False)
-    # Plain FileField (not ImageField): no server-side image work is
-    # needed, so type/size are validated in the form by magic bytes
-    # and the browser downscales uploads to 256px before sending.
+    # plain filefield not imagefield. the form checks the magic bytes and
+    # the browser shrinks the image before upload
     avatar = models.FileField(upload_to="avatars/", blank=True, null=True)
-    # PWA install nudge: "Don't show again" is permanent per
-    # account; "Maybe later" (or an ignored banner) stamps
-    # last_shown so the banner rests until the next day.
+    # install banner state. never is permanent, maybe later just stops it
+    # showing again until the next day
     install_prompt_dismissed = models.BooleanField(default=False)
     install_prompt_last_shown = models.DateTimeField(null=True, blank=True)

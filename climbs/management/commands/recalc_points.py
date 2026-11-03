@@ -1,3 +1,5 @@
+"""recalculate points for every send after a scoring change"""
+
 from django.core.management.base import BaseCommand
 
 from climbs.models import Ascent
