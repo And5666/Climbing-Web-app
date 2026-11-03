@@ -63,12 +63,12 @@
             </label>
         </form>
         {% if months %}
-            <div class="progress-graph" role="img" aria-label="Monthly training stats">
+            <div class="progress-graph{% if months|length > 12 %} dense{% endif %}" role="img" aria-label="Monthly training stats">
                 {% for month in months %}
                     <div class="progress-col" title="{{ month.label }} · {{ month.display }} · {{ month.sends }} send{{ month.sends|pluralize }}">
                         <span class="progress-grade">{{ month.display }}</span>
                         <span class="progress-track"><span class="progress-bar" style="height:{{ month.pct }}%"></span></span>
-                        <span class="progress-month">{{ month.label }}</span>
+                        <span class="progress-month">{{ month.axis_label }}</span>
                     </div>
                 {% endfor %}
             </div>

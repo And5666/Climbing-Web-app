@@ -1,0 +1,40 @@
+<article class="forum-comment" data-comment="{{ comment.id }}">
+    <p class="forum-meta">
+        {% if comment.user.avatar %}
+            <img src="{{ comment.user.avatar.url }}" alt="" class="forum-avatar forum-avatar-sm">
+        {% else %}
+            <span class="forum-avatar forum-avatar-sm avatar-fallback" aria-hidden="true">{{ comment.user.username|first|upper }}</span>
+        {% endif %}
+        <button type="button" class="forum-author{% if comment.user_is_staff %} forum-author-staff{% endif %}" data-username="{{ comment.user.username }}" title="View climber">{{ comment.user.username }}</button>
+        {% if comment.user_is_staff %}<span class="forum-admin-badge">Admin</span>{% endif %}
+        <span class="muted">· {{ comment.created_at|date:"j M Y, H:i" }}</span>
+    </p>
+    {% if comment.parent_id %}
+        <p class="forum-reply-context">replying to <span>@{{ comment.parent.user.username }}</span></p>
+    {% elif comment.reply_to %}
+        <p class="forum-reply-context">replying to <span>@{{ comment.reply_to.username }}</span></p>
+    {% endif %}
+    <div class="forum-comment-body">{{ comment.text|linebreaksbr }}</div>
+    <div class="forum-actions">
+        {% if user.is_authenticated %}
+            <button class="forum-action forum-like{% if comment.is_liked %} liked{% endif %}" type="button" data-like-comment="{{ comment.id }}" data-like-url="{% url 'climbs:forum-comment-like' comment.id %}" aria-pressed="{{ comment.is_liked|yesno:'true,false' }}" aria-label="Like comment">
+                <span aria-hidden="true">♥</span> <span data-like-count>{{ comment.like_count }}</span>
+            </button>
+            <button class="forum-action" type="button" data-reply-comment="{{ comment.id }}" data-reply-user="{{ comment.user.username }}">Reply</button>
+        {% else %}
+            <a class="forum-action forum-like" href="{% url 'login' %}?next={{ request.path }}" title="Sign in to like">
+                <span aria-hidden="true">♥</span> {{ comment.like_count }}
+            </a>
+        {% endif %}
+        {% if user.is_staff or comment.user_id == user.id %}
+            <button class="forum-action forum-danger" type="button" data-del-comment="{{ comment.id }}" data-del-url="{% url 'climbs:forum-comment-delete' comment.id %}">Delete</button>
+        {% endif %}
+    </div>
+    {% if comment.child_comments %}
+        <div class="forum-comment-children">
+            {% for child in comment.child_comments %}
+                {% include "climbs/_forum_comment.html" with comment=child %}
+            {% endfor %}
+        </div>
+    {% endif %}
+</article>

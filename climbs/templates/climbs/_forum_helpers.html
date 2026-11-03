@@ -1,0 +1,22 @@
+<script>
+// Small shared helpers for the forum pages. Kept in one partial so
+// the post list and the discussion page send identical requests.
+window.forumGetCookie = function (name) {
+    const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+    return match ? match[2] : null;
+};
+
+window.forumApi = async function (url, method, body) {
+    const res = await fetch(url, {
+        method: method || 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': window.forumGetCookie('csrftoken'),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+    return data;
+};
+</script>

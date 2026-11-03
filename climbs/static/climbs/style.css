@@ -2080,62 +2080,483 @@ ul.plain li {
     border-color: var(--accent);
 }
 
-/* Gym news: one sheet, newest first, staff post inline. */
-.news-page textarea {
+/* --- Forum --- */
+/* A wider sheet than the profile pages: posts, discussion and the
+   composer all live on the same paper. Everything uses theme tokens
+   so the forum keeps its shape across all nine themes. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.forum-page {
+    margin: 0 auto;
+    width: min(820px, 96vw);
+    padding: 1.25rem 0 3rem;
+}
+
+.forum-head {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.forum-head h2 {
+    margin: 0 0 0.2rem;
+}
+
+.forum-head p {
+    margin: 0;
+    font-size: 0.85rem;
+}
+
+.forum-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.forum-sort {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.forum-sort-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.38rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: var(--r-btn);
+    background: var(--surface);
+    color: var(--muted);
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-decoration: none;
+}
+
+.forum-sort-link:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.forum-sort-link.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+}
+
+/* Post and comment writers open in a sheet, not a permanent block at
+   the top of the page. Same shape as the theme picker on phones. */
+.forum-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 130;
+    display: none;
+}
+
+.forum-modal.open {
+    display: block;
+}
+
+.forum-modal-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.forum-modal-box {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: min(560px, 100%);
+    max-height: 88dvh;
+    overflow-y: auto;
+    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    box-shadow: var(--shadow);
+}
+
+.forum-modal-box h2 {
+    margin: 0 0 0.75rem;
+    padding-right: 2.5rem;
+    padding-bottom: 0.5rem;
+    font-size: 0.9rem;
+    text-transform: var(--heading-transform);
+    letter-spacing: var(--heading-spacing);
+    border-bottom: 2px solid var(--border);
+}
+
+.forum-modal-x {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.35rem;
+    width: 44px;
+    height: 44px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.6rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.forum-modal-x:hover {
+    color: var(--text);
+}
+
+@media (min-width: 700px) {
+    .forum-modal-box {
+        top: 50%;
+        bottom: auto;
+        transform: translate(-50%, -50%);
+        border-bottom: 1px solid var(--border);
+        border-radius: var(--r-md);
+        padding-bottom: 1rem;
+    }
+}
+
+.forum-page .card h2,
+.forum-comments-head h2 {
+    margin: 0 0 0.75rem;
+    padding-bottom: 0.5rem;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 2px solid var(--border);
+}
+
+.forum-page input[type="text"],
+.forum-page textarea {
     width: 100%;
-    resize: vertical;
-    margin-bottom: 0.5rem;
+    padding: 0.6rem 0.75rem;
     background: var(--surface-2);
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
     color: var(--text);
     font: inherit;
-    padding: 0.55rem 0.75rem;
 }
 
-.news-page textarea:focus {
+.forum-page textarea {
+    resize: vertical;
+}
+
+.forum-page input[type="text"]:focus,
+.forum-page textarea:focus {
     outline: none;
     border-color: var(--accent);
 }
 
-.news-page .card > h2 {
-    margin: 0 0 0.5rem;
+.forum-page .card .btn {
+    width: auto;
+    margin-top: 0;
 }
 
-.news-page .sheet-section {
-    margin-top: 1.4rem;
-    padding-top: 1.2rem;
-    border-top: 1px solid var(--border-soft);
+.forum-page .card .btn-sm {
+    padding: 0.4rem 0.7rem;
+    font-size: 0.75rem;
 }
 
-.news-page .sheet-section h3 {
-    margin-bottom: 0.4rem;
+.forum-page .card .btn-md {
+    padding: 0.6rem 1.25rem;
 }
 
-.news-post .muted {
-    margin: 0 0 0.5rem;
+.forum-compose-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.6rem;
+    flex-wrap: wrap;
 }
 
-.news-body {
+.forum-compose-actions .muted {
+    font-size: 0.78rem;
+}
+
+.forum-compose-end {
+    justify-content: flex-end;
+}
+
+.forum-char-count {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.forum-char-count.near-limit {
+    color: var(--danger);
+    font-weight: 700;
+}
+
+.forum-post {
+    position: relative;
+}
+
+.forum-post.pinned {
+    border-color: var(--accent);
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.forum-pin-badge {
+    display: inline-block;
+    margin-bottom: 0.55rem;
+    padding: 0.15rem 0.5rem;
+    background: var(--accent);
+    border-radius: var(--r-sm);
+    color: var(--accent-ink);
+    font-family: var(--font-display);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.forum-post-title {
+    margin: 0 0 0.45rem;
     overflow-wrap: anywhere;
 }
 
-.news-actions {
+.forum-post-title a {
+    color: var(--text);
+    text-decoration: none;
+}
+
+.forum-post-title a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+.forum-meta {
     display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.4rem;
+    font-size: 0.82rem;
+}
+
+.forum-avatar {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.forum-avatar-sm {
+    width: 28px;
+    height: 28px;
+}
+
+.forum-author {
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--link);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.forum-author:hover {
+    text-decoration: underline;
+}
+
+.forum-author-staff {
+    color: var(--accent);
+}
+
+.forum-admin-badge {
+    padding: 0.1rem 0.4rem;
+    background: var(--accent);
+    border-radius: var(--r-sm);
+    color: var(--accent-ink);
+    font-family: var(--font-display);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.forum-body,
+.forum-comment-body {
+    overflow-wrap: anywhere;
+}
+
+.forum-body {
+    margin: 0.3rem 0 0;
+}
+
+.forum-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.9rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.forum-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.32rem 0.6rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-btn);
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.78rem;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.forum-action:hover {
+    border-color: var(--accent);
+    color: var(--text);
+}
+
+.forum-like.liked {
+    background: var(--surface);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.forum-danger:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.forum-author:focus-visible,
+.forum-action:focus-visible,
+.forum-sort-link:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.forum-edit {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border-soft);
+}
+
+.forum-back {
+    margin: 0 0 0.8rem;
+}
+
+.forum-back a {
+    color: var(--link);
+    font-size: 0.85rem;
+    text-decoration: none;
+}
+
+.forum-back a:hover {
+    text-decoration: underline;
+}
+
+.forum-comments-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 0.5rem;
-    margin-top: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.9rem;
 }
 
-.news-edit {
-    margin-top: 0.75rem;
+.forum-comments-head h2 {
+    margin: 0;
+    border-bottom: 0;
+    padding-bottom: 0;
 }
 
-.news-edit .btn {
-    width: 100%;
-    margin-top: 0.5rem;
+.forum-comments-head .muted {
+    font-size: 0.78rem;
 }
 
-.news-pages {
+.forum-reply-note {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+    padding: 0.4rem 0.6rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-sm);
+    font-size: 0.8rem;
+}
+
+/* display:flex above would otherwise beat the hidden attribute, which
+   made "replying to" show on a brand-new top-level comment. */
+.forum-reply-note[hidden] {
+    display: none;
+}
+
+.forum-reply-context {
+    margin: 0 0 0.3rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.forum-reply-context span {
+    color: var(--link);
+    font-weight: 700;
+}
+
+.forum-comment-children {
+    margin: 0.65rem 0 0 0.6rem;
+    padding-left: 0.85rem;
+    border-left: 2px solid var(--border-soft);
+}
+
+.forum-comment {
+    padding: 0.9rem 0;
+    border-top: 1px solid var(--border-soft);
+}
+
+.forum-comment:first-child {
+    border-top: 0;
+    padding-top: 0.2rem;
+}
+
+.forum-comment-body {
+    margin: 0.25rem 0 0;
+}
+
+.forum-comment .forum-actions {
+    margin-top: 0.55rem;
+    padding-top: 0.55rem;
+    border-top: 0;
+}
+
+.forum-no-comments {
+    padding: 0.5rem 0;
+}
+
+.forum-pages {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -2145,8 +2566,37 @@ ul.plain li {
     border-top: 1px solid var(--border-soft);
 }
 
-.news-pages form {
-    margin: 0;
+@media (max-width: 600px) {
+    .forum-page {
+        width: 94vw;
+        padding-top: 1rem;
+    }
+
+    .forum-head {
+        align-items: flex-start;
+    }
+
+    .forum-compose-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .forum-compose-actions .btn {
+        width: 100%;
+    }
+
+    .forum-action {
+        padding: 0.4rem 0.55rem;
+    }
+
+    .forum-comment .forum-actions .btn {
+        width: auto;
+    }
+
+    .forum-comment-children {
+        margin-left: 0.25rem;
+        padding-left: 0.55rem;
+    }
 }
 
 .comment {
@@ -3879,24 +4329,24 @@ body.filter-open .filter-panel {
 .progress-graph {
     display: flex;
     align-items: stretch;
-    gap: 0.6rem;
+    gap: 0.3rem;
     margin-top: 0.75rem;
-    overflow-x: auto;
+    overflow: visible;
     padding-bottom: 0.25rem;
 }
 
 .progress-col {
-    flex: 1 0 3.2rem;
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.2rem;
     min-width: 0;
 }
 
 .progress-grade {
     font-weight: 800;
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--sand);
     white-space: nowrap;
 }
@@ -3918,9 +4368,40 @@ body.filter-open .filter-panel {
 }
 
 .progress-month {
-    font-size: 0.7rem;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 0.62rem;
     color: var(--muted);
     white-space: nowrap;
+}
+
+.progress-graph.dense {
+    gap: 0.15rem;
+}
+
+.progress-graph.dense .progress-col {
+    gap: 0.15rem;
+}
+
+.progress-graph.dense .progress-grade {
+    display: none;
+}
+
+.progress-graph.dense .progress-month {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    height: 3.8rem;
+    font-size: 0.55rem;
+}
+
+@media (max-width: 380px) {
+    .progress-graph {
+        gap: 0.2rem;
+    }
+
+    .progress-month {
+        font-size: 0.56rem;
+    }
 }
 
 /* Zero rows stay listed but recede, so the active rows pop. */

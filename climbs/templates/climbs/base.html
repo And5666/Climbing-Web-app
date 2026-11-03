@@ -77,7 +77,7 @@
         <div class="nav-links">
             <a href="{% url 'climbs:map' %}" class="nav-link{% if current == 'map' %} active{% endif %}"{% if current == 'map' %} aria-current="page"{% endif %}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a4.5 4.5 0 0 0-4.5 4.5C3.5 9.5 8 14.5 8 14.5S12.5 9.5 12.5 6A4.5 4.5 0 0 0 8 1.5Zm0 6.2a1.7 1.7 0 1 1 0-3.4 1.7 1.7 0 0 1 0 3.4Z" fill="currentColor"/></svg>Map</a>
             <a href="{% url 'climbs:leaderboard' %}" class="nav-link{% if current == 'leaderboard' %} active{% endif %}"{% if current == 'leaderboard' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="6"/><path d="M15.5 13 17 22l-5-3-5 3 1.5-9"/></svg>Leaderboard</a>
-            <a href="{% url 'climbs:news' %}" class="nav-link{% if current == 'news' %} active{% endif %}"{% if current == 'news' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h7M7 13h10M7 17h6"/></svg>News</a>
+            <a href="{% url 'climbs:forum' %}" class="nav-link{% if current == 'forum' or current == 'forum-post' %} active{% endif %}"{% if current == 'forum' or current == 'forum-post' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-3.4-.6L3 21l1.7-4.6A8.4 8.4 0 0 1 3.6 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.4 8.4Z"/><path d="M8 10h8M8 14h5"/></svg>Forum</a>
             {% if user.is_staff %}
                 <a href="{% url 'climbs:climb-admin' %}" class="nav-link{% if current == 'climb-admin' or current == 'board-admin' %} active{% endif %}" data-nav-admin="1"{% if current == 'climb-admin' or current == 'board-admin' %} aria-current="page"{% endif %}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Admin</a>
             {% endif %}
@@ -101,6 +101,20 @@
             {% endif %}
         </div>
     </nav>
+
+    <script>
+        // Phone nav scrolls sideways when the labels do not fit.
+        // Bring the current tab into view without moving the page.
+        (function () {
+            const links = document.querySelector('.nav-links');
+            const active = links && links.querySelector('.nav-link.active');
+            if (!links || !active || links.scrollWidth <= links.clientWidth) return;
+            const linkRect = active.getBoundingClientRect();
+            const box = links.getBoundingClientRect();
+            links.scrollLeft += linkRect.left - box.left -
+                (box.width - linkRect.width) / 2;
+        })();
+    </script>
 
     {% if messages %}
         <div class="flash-wrap">

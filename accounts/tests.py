@@ -233,6 +233,44 @@ class ProfilePageTests(TestCase):
         self.assertNotIn("graph-row", walled)
         self.assertNotIn("graph-labels-wide", walled)
 
+    def test_stats_long_range_fits_without_sideways_scroll(self):
+        # Twelve columns and the all-time span share the card width:
+        # the template marks dense ranges so the axis can go vertical
+        # instead of pushing the graph off the page.
+        from datetime import timedelta
+
+        from django.utils.timezone import now
+
+        from climbs.models import Ascent, Climb, ClimbSet
+
+        user = self.make_user("longstats")
+        wall_set = ClimbSet.objects.create(
+            wall="main", label="Long stats", is_active=True)
+        climb = Climb.objects.create(
+            name="Old", grade="V3", tag="green", colour="green",
+            wall="main", climb_set=wall_set,
+            x_percent=10.0, y_percent=10.0)
+        newer = Climb.objects.create(
+            name="New", grade="V4", tag="blue", colour="blue",
+            wall="main", climb_set=wall_set,
+            x_percent=20.0, y_percent=20.0)
+        old = climb.ascents.create(user=user, tries=1, points=10)
+        newer.ascents.create(user=user, tries=1, points=20)
+        Ascent.objects.filter(pk=old.pk).update(
+            logged_at=now() - timedelta(days=600))
+        self.client.force_login(user)
+        twelve = self.client.get(
+            reverse("accounts:stats") + "?range=12")
+        self.assertContains(twelve, 'class="progress-graph"')
+        self.assertEqual(
+            twelve.content.decode().count("progress-col"), 12)
+        all_time = self.client.get(
+            reverse("accounts:stats") + "?range=all")
+        self.assertContains(all_time, 'class="progress-graph dense"')
+        self.assertGreater(
+            all_time.content.decode().count("progress-col"), 12)
+        self.assertNotContains(all_time, "overflow-x")
+
     def test_stats_requires_login(self):
         response = self.client.get(reverse("accounts:stats"))
         self.assertEqual(response.status_code, 302)

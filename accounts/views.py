@@ -64,6 +64,7 @@ def _stats_months(user, metric, wall, months_back):
         buckets[key]["best"] = max(buckets[key]["best"], number)
     months = []
     running = 0
+    dense = len(keys) > 12
     for year, month in keys:
         bucket = buckets[(year, month)]
         if metric == "points":
@@ -75,8 +76,14 @@ def _stats_months(user, metric, wall, months_back):
             running = max(running, bucket["best"])
             value = running
             display = f"V{running}" if running else "—"
+        month_date = date(year, month, 1)
+        full_label = month_date.strftime("%b %Y")
+        # 12 bars fit side by side with short labels. Longer ranges
+        # go vertical so the whole chart stays on the card.
         months.append({
-            "label": date(year, month, 1).strftime("%b %Y"),
+            "label": full_label,
+            "axis_label": (full_label if dense or len(keys) <= 6
+                           else month_date.strftime("%b")),
             "value": value,
             "display": display,
             "sends": bucket["sends"],

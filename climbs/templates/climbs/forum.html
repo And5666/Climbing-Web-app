@@ -1,0 +1,207 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}Forum{% endblock %}
+
+{% block content %}
+<div class="forum-page">
+    <header class="forum-head">
+        <div>
+            <h2>Forum</h2>
+            <p class="muted">Talk beta, share sends, or plan the next session. Every climber can post.</p>
+        </div>
+        <div class="forum-head-actions">
+            {% if user.is_authenticated %}
+                <button class="btn btn-md" id="forum-new-post" type="button">New post</button>
+            {% else %}
+                <a class="btn btn-md" href="{% url 'login' %}?next={% url 'climbs:forum' %}">Sign in to post</a>
+            {% endif %}
+            <div class="forum-sort" role="group" aria-label="Sort posts">
+                <span class="muted">Sort</span>
+                {% for value, label in sort_choices %}
+                    <a href="?sort={{ value }}" class="forum-sort-link{% if sort == value %} active{% endif %}"{% if sort == value %} aria-current="true"{% endif %}>{{ label }}</a>
+                {% endfor %}
+            </div>
+        </div>
+    </header>
+
+    <div class="forum-posts">
+        {% for post in page.object_list %}
+            <article class="card forum-post{% if post.is_pinned %} pinned{% endif %}" data-post="{{ post.id }}">
+                {% if post.is_pinned %}
+                    <span class="forum-pin-badge">Pinned</span>
+                {% endif %}
+                {% if post.title %}
+                    <h3 class="forum-post-title"><a href="{% url 'climbs:forum-post' post.id %}?sort={{ sort }}">{{ post.title }}</a></h3>
+                {% endif %}
+                <p class="forum-meta">
+                    {% if post.author %}
+                        {% if post.author.avatar %}
+                            <img src="{{ post.author.avatar.url }}" alt="" class="forum-avatar">
+                        {% else %}
+                            <span class="forum-avatar avatar-fallback" aria-hidden="true">{{ post.author.username|first|upper }}</span>
+                        {% endif %}
+                        <button type="button" class="forum-author{% if post.author_is_staff %} forum-author-staff{% endif %}" data-username="{{ post.author.username }}" title="View climber">{{ post.author.username }}</button>
+                        {% if post.author_is_staff %}<span class="forum-admin-badge">Admin</span>{% endif %}
+                    {% else %}
+                        <span class="forum-avatar avatar-fallback" aria-hidden="true">G</span>
+                        <span class="forum-author">The gym</span>
+                    {% endif %}
+                    <span class="muted">· {{ post.created_at|date:"j M Y, H:i" }}</span>
+                </p>
+                <div class="forum-body">{{ post.body|linebreaksbr }}</div>
+                <div class="forum-actions">
+                    <a class="forum-action" href="{% url 'climbs:forum-post' post.id %}?sort={{ sort }}#comments">
+                        <span aria-hidden="true">💬</span> {{ post.comment_count }} comment{{ post.comment_count|pluralize }}
+                    </a>
+                    {% if user.is_authenticated %}
+                        <button class="forum-action forum-like{% if post.is_liked %} liked{% endif %}" type="button" data-like-post="{{ post.id }}" data-like-url="{% url 'climbs:forum-like' post.id %}" aria-pressed="{{ post.is_liked|yesno:'true,false' }}" aria-label="Like post">
+                            <span aria-hidden="true">♥</span> <span data-like-count>{{ post.like_count }}</span>
+                        </button>
+                    {% else %}
+                        <a class="forum-action forum-like" href="{% url 'login' %}?next={% url 'climbs:forum' %}" title="Sign in to like">
+                            <span aria-hidden="true">♥</span> {{ post.like_count }}
+                        </a>
+                    {% endif %}
+                    {% if user.is_staff %}
+                        <button class="btn btn-sm btn-secondary" type="button" data-pin-post="{{ post.id }}" data-pin-url="{% url 'climbs:forum-pin' post.id %}">{% if post.is_pinned %}Unpin{% else %}Pin{% endif %}</button>
+                    {% endif %}
+                    {% if user.is_authenticated %}
+                        {% if user.is_staff or post.author_id == user.id %}
+                            <button class="btn btn-sm btn-secondary forum-danger" type="button" data-del-post="{{ post.id }}" data-del-url="{% url 'climbs:forum-delete' post.id %}">Delete</button>
+                        {% endif %}
+                    {% endif %}
+                </div>
+            </article>
+        {% empty %}
+            <section class="card forum-empty">
+                <h3>No posts yet</h3>
+                <p class="muted">Be the first to say hello.</p>
+            </section>
+        {% endfor %}
+    </div>
+
+    {% if page.has_other_pages %}
+        <div class="forum-pages">
+            {% if page.has_previous %}
+                <a class="btn btn-sm btn-secondary" href="?sort={{ sort }}&page={{ page.previous_page_number }}">← Previous</a>
+            {% else %}
+                <span></span>
+            {% endif %}
+            <span class="muted">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+            {% if page.has_next %}
+                <a class="btn btn-sm btn-secondary" href="?sort={{ sort }}&page={{ page.next_page_number }}">Next →</a>
+            {% else %}
+                <span></span>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    {% if user.is_authenticated %}
+        <div class="forum-modal" id="forum-post-modal" aria-hidden="true">
+            <div class="forum-modal-scrim" data-close-post-modal></div>
+            <section class="forum-modal-box" role="dialog" aria-modal="true" aria-labelledby="forum-post-modal-title">
+                <button class="forum-modal-x" type="button" data-close-post-modal aria-label="Close">×</button>
+                <h2 id="forum-post-modal-title">Start a post</h2>
+                <form id="forum-composer">
+                    {% csrf_token %}
+                    <label for="forum-title">Title <span class="muted">(optional)</span></label>
+                    <input type="text" id="forum-title" maxlength="200" placeholder="e.g. Best V4 on the Cave?">
+                    <label for="forum-body">Post</label>
+                    <textarea id="forum-body" rows="5" maxlength="5000" placeholder="What's on your mind?"></textarea>
+                    <div class="forum-compose-actions forum-compose-end">
+                        <button class="btn btn-md" id="forum-publish" type="button">Post</button>
+                    </div>
+                </form>
+            </section>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "climbs/_forum_helpers.html" %}
+{% if user.is_authenticated %}
+<script>
+(function () {
+    const modal = document.getElementById('forum-post-modal');
+    const openBtn = document.getElementById('forum-new-post');
+    if (modal && openBtn) {
+        const close = (returnFocus) => {
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            if (returnFocus) openBtn.focus();
+        };
+        openBtn.addEventListener('click', () => {
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.getElementById('forum-body').focus();
+        });
+        modal.querySelectorAll('[data-close-post-modal]').forEach((el) => {
+            el.addEventListener('click', () => close(true));
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && modal.classList.contains('open')) {
+                close(true);
+            }
+        });
+    }
+
+    const publish = document.getElementById('forum-publish');
+    if (publish) {
+        publish.addEventListener('click', async () => {
+            const title = document.getElementById('forum-title').value.trim();
+            const body = document.getElementById('forum-body').value.trim();
+            if (!body) {
+                alert('Write something first.');
+                return;
+            }
+            publish.disabled = true;
+            try {
+                const data = await forumApi('{% url "climbs:forum-create" %}', 'POST', {title, body});
+                location.href = data.url;
+            } catch (err) {
+                alert(err.message);
+                publish.disabled = false;
+            }
+        });
+    }
+
+    document.querySelectorAll('[data-like-post]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                const data = await forumApi(btn.dataset.likeUrl, 'POST');
+                btn.querySelector('[data-like-count]').textContent = data.count;
+                btn.classList.toggle('liked', data.liked);
+                btn.setAttribute('aria-pressed', String(data.liked));
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-pin-post]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                await forumApi(btn.dataset.pinUrl, 'POST');
+                location.reload();
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    });
+
+    document.querySelectorAll('[data-del-post]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Delete this post and all its comments?')) return;
+            try {
+                await forumApi(btn.dataset.delUrl, 'POST');
+                location.reload();
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

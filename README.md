@@ -37,6 +37,10 @@ and of everyone climbing it.
   with the rest of the wall on the per-board leaderboard.
 - **Grades you can argue with.** Community grade votes, star ratings and
   comments on every problem.
+- **A forum for the wall.** Any signed-in climber can start a post,
+  comment, reply to a climber or leave a like. Posts sort by newest,
+  oldest or most discussed, and staff can pin the important ones and
+  keep the discussion tidy.
 - **Setters' tools.** Build a set as a quiet draft, place and edit climbs
   on the board, activate the set when it goes up, review flags and void
   ascents — all without touching Django admin.
@@ -45,7 +49,7 @@ and of everyone climbing it.
 - **Installable app.** A real PWA — home-screen install with the
   "Install app" button on your profile, plus a QR code and share link on
   the leaderboard.
-- **Seven themes**, mobile first, and no CDN or frontend build step:
+- **Nine themes**, mobile first, and no CDN or frontend build step:
   plain templates, CSS custom properties and vanilla JS.
 
 ## Screenshots
@@ -53,11 +57,11 @@ and of everyone climbing it.
 <table>
   <tr>
     <td width="50%"><img src="docs/screenshots/leaderboard.png" alt="Leaderboard for both walls"></td>
-    <td width="50%"><img src="docs/screenshots/news.png" alt="Gym news page"></td>
+    <td width="50%"><img src="docs/screenshots/forum.png" alt="Forum page with posts, sorting and likes"></td>
   </tr>
 </table>
 
-<p align="center"><sub>Leaderboard: points, sends and places for each wall &nbsp;·&nbsp; Gym news</sub></p>
+<p align="center"><sub>Leaderboard: points, sends and places for each wall &nbsp;·&nbsp; Forum: posts, pins and comments</sub></p>
 
 ## Stack
 
@@ -110,7 +114,7 @@ The database and uploaded avatars live in the `summit-data` volume.
 
 ```
 summit_map_project/   settings, root URL configuration
-climbs/               the wall: map, climbs, sets, leaderboard, news,
+climbs/               the wall: map, climbs, sets, leaderboard, forum,
                       manifest, service worker, setters' admin tools
 accounts/             profiles, personal stats, install-prompt endpoints
 docs/screenshots/     the images in this README

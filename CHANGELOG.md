@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.1
+
+- Forum comments now show a live character counter and enforce the
+  same 2000-character limit in the browser and on the server.
+- News is now a forum. Any signed-in climber can start a post with an
+  optional title, comment on any post, reply in a Reddit-style thread
+  and leave a like. There are no dislikes.
+- Forum posts and comments show profile pictures, with the usual
+  initials fallback for climbers who have not uploaded one.
+- Starting a post and writing a comment both open in a sheet, either
+  from the New post / Comment buttons or from any Reply button. The
+  "replying to" chip only appears for an actual reply.
+- Threads run oldest first, with replies nested under their parent and
+  a clear "replying to @username" line plus an indented rail.
+- Posts sort by newest, oldest or most discussed, and staff can pin a
+  post above every sort order. Staff usernames carry an Admin badge and
+  accent colour wherever they appear.
+- Post authors can edit or delete their own posts. Staff can edit,
+  delete and pin any post, and can delete any comment. Comment authors
+  can remove their own.
+- The old `/news/` URL redirects to `/forum/`, and existing news posts
+  are kept as the first forum posts.
+- Stats progress charts fit the card at 12 months and all time. Long
+  ranges use short labels and a vertical axis instead of sideways
+  scrolling.
+
 ## 1.2.0
 
 - Mystery climbs reveal their stored grade after seven days, on the

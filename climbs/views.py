@@ -4,10 +4,10 @@ from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Avg, Count, Sum
+from django.db.models import Avg, Count, Exists, OuterRef, Sum
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
-from django.urls import reverse_lazy
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse, reverse_lazy
 from django.utils.timezone import now
 from django.views.decorators.http import require_http_methods
 from django.views.generic import CreateView
@@ -18,6 +18,8 @@ from .models import (
     Climb,
     ClimbSet,
     Comment,
+    FORUM_COMMENT_MAX_LENGTH,
+    ForumComment,
     GradeSuggestion,
     NewsPost,
     Rating,
@@ -1334,59 +1336,262 @@ def climb_set_start_api(request):
     return JsonResponse({"id": climb_set.id, "label": climb_set.label})
 
 
-NEWS_PER_PAGE = 5
+FORUM_PER_PAGE = 8
+FORUM_SORTS = {
+    # pinned posts always sit above the chosen order
+    "new": ("-is_pinned", "-created_at"),
+    "old": ("-is_pinned", "created_at"),
+    "popular": ("-is_pinned", "-comment_count", "-like_count",
+                "-created_at"),
+}
 
 
-def news_view(request):
-    """gym news, 5 posts a page"""
-    posts = NewsPost.objects.select_related("author").all()
-    page = Paginator(posts, NEWS_PER_PAGE).get_page(request.GET.get("page"))
-    return render(request, "climbs/news.html", {"page": page})
+def _forum_sort(request):
+    """new, old or popular. unknown values fall back to new"""
+    sort = request.GET.get("sort", "new")
+    return sort if sort in FORUM_SORTS else "new"
 
 
-def _news_payload(request):
+def _forum_posts(request):
+    """posts with like and comment totals, plus whether this viewer
+    liked each one. one query for the list"""
+    posts = (NewsPost.objects.select_related("author")
+             .annotate(like_count=Count("likes", distinct=True),
+                       comment_count=Count(
+                           "forum_comments", distinct=True)))
+    if request.user.is_authenticated:
+        posts = posts.annotate(is_liked=Exists(
+            NewsPost.likes.through.objects.filter(
+                newspost_id=OuterRef("pk"), user_id=request.user.id)))
+    return posts
+
+
+def _forum_comments(request, post):
+    """every comment on a post, oldest first, with like totals"""
+    comments = (post.forum_comments.select_related(
+        "user", "reply_to", "parent__user")
+        .annotate(like_count=Count("likes", distinct=True)))
+    if request.user.is_authenticated:
+        comments = comments.annotate(is_liked=Exists(
+            ForumComment.likes.through.objects.filter(
+                forumcomment_id=OuterRef("pk"),
+                user_id=request.user.id)))
+    return comments.order_by("created_at")
+
+
+def _comment_tree(comments):
+    """turn the flat oldest-first list into reddit-style threads.
+    replies keep the same oldest-first order under their parent"""
+    by_parent = {}
+    for comment in comments:
+        comment.child_comments = []
+        by_parent.setdefault(comment.parent_id, []).append(comment)
+
+    def attach(comment):
+        comment.child_comments = [
+            attach(child) for child in by_parent.get(comment.id, [])
+        ]
+        return comment
+
+    return [attach(comment) for comment in by_parent.get(None, [])]
+
+
+def forum_view(request):
+    """the forum: everyone can post, pinned posts sit on top, and the
+    list can run newest, oldest or most discussed first"""
+    sort = _forum_sort(request)
+    posts = _forum_posts(request).order_by(*FORUM_SORTS[sort])
+    page = Paginator(posts, FORUM_PER_PAGE).get_page(request.GET.get("page"))
+    return render(request, "climbs/forum.html", {
+        "page": page,
+        "sort": sort,
+        "sort_choices": [
+            ("new", "Newest"), ("old", "Oldest"),
+            ("popular", "Popular"),
+        ],
+    })
+
+
+def news_redirect(request):
+    """old /news/ links land on the forum"""
+    return redirect("climbs:forum", permanent=True)
+
+
+def forum_post_view(request, post_id):
+    post = get_object_or_404(_forum_posts(request), id=post_id)
+    comments = list(_forum_comments(request, post))
+    return render(request, "climbs/forum_post.html", {
+        "post": post,
+        "comments": _comment_tree(comments),
+        "comment_count": post.comment_count,
+        "comment_max_length": FORUM_COMMENT_MAX_LENGTH,
+        "back_sort": _forum_sort(request),
+    })
+
+
+def _forum_payload(request):
     try:
         data = json.loads(request.body)
     except (ValueError, TypeError, json.JSONDecodeError):
         return None, JsonResponse({"error": "Invalid data."}, status=400)
     title = (data.get("title") or "").strip()
     body = (data.get("body") or "").strip()
-    if not title or not body:
+    if not body:
         return None, JsonResponse(
-            {"error": "Title and body required."}, status=400)
+            {"error": "Write something first."}, status=400)
     if len(title) > 200 or len(body) > 5000:
         return None, JsonResponse(
-            {"error": "Title or body too long."}, status=400)
+            {"error": "Keep the title under 200 and the post under 5000 "
+                      "characters."}, status=400)
     return {"title": title, "body": body}, None
 
 
-@user_passes_test(staff_check)
+def _can_manage_post(user, post):
+    """staff can manage everything, authors can manage their own post"""
+    return user.is_authenticated and (
+        user.is_staff or post.author_id == user.id)
+
+
 @require_http_methods(["POST"])
-def news_create_api(request):
-    fields, error = _news_payload(request)
+def forum_create_api(request):
+    denied = _login_required_json(request)
+    if denied:
+        return denied
+    fields, error = _forum_payload(request)
     if error:
         return error
     post = NewsPost.objects.create(author=request.user, **fields)
-    return JsonResponse({"id": post.id})
+    return JsonResponse({
+        "id": post.id,
+        "url": reverse("climbs:forum-post", args=[post.id]),
+    })
 
 
-@user_passes_test(staff_check)
 @require_http_methods(["POST"])
-def news_update_api(request, post_id):
+def forum_update_api(request, post_id):
     post = get_object_or_404(NewsPost, id=post_id)
-    fields, error = _news_payload(request)
+    if not _can_manage_post(request.user, post):
+        return JsonResponse({"error": "Not allowed."}, status=403)
+    fields, error = _forum_payload(request)
     if error:
         return error
     post.title = fields["title"]
     post.body = fields["body"]
-    post.save(update_fields=["title", "body"])
+    post.save(update_fields=["title", "body", "updated_at"])
     return JsonResponse({"status": "ok"})
+
+
+@require_http_methods(["POST"])
+def forum_delete_api(request, post_id):
+    post = get_object_or_404(NewsPost, id=post_id)
+    if not _can_manage_post(request.user, post):
+        return JsonResponse({"error": "Not allowed."}, status=403)
+    post.delete()
+    return JsonResponse({"status": "deleted"})
 
 
 @user_passes_test(staff_check)
 @require_http_methods(["POST"])
-def news_delete_api(request, post_id):
-    NewsPost.objects.filter(id=post_id).delete()
+def forum_pin_api(request, post_id):
+    post = get_object_or_404(NewsPost, id=post_id)
+    post.is_pinned = not post.is_pinned
+    post.save(update_fields=["is_pinned"])
+    return JsonResponse({"pinned": post.is_pinned})
+
+
+def _toggle_like(manager, user):
+    """add or remove one like. returns (liked, new total)"""
+    if manager.filter(pk=user.pk).exists():
+        manager.remove(user)
+        liked = False
+    else:
+        manager.add(user)
+        liked = True
+    return liked, manager.count()
+
+
+@require_http_methods(["POST"])
+def forum_post_like_api(request, post_id):
+    denied = _login_required_json(request)
+    if denied:
+        return denied
+    post = get_object_or_404(NewsPost, id=post_id)
+    liked, count = _toggle_like(post.likes, request.user)
+    return JsonResponse({"liked": liked, "count": count})
+
+
+@require_http_methods(["POST"])
+def forum_comment_create_api(request, post_id):
+    denied = _login_required_json(request)
+    if denied:
+        return denied
+    post = get_object_or_404(NewsPost, id=post_id)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return JsonResponse({"error": "Invalid data."}, status=400)
+    text = (data.get("text") or "").strip()
+    if not text or len(text) > FORUM_COMMENT_MAX_LENGTH:
+        return JsonResponse(
+            {"error": "Comment must be between 1 and "
+                      f"{FORUM_COMMENT_MAX_LENGTH} characters."},
+            status=400)
+    parent = None
+    parent_id = data.get("parent")
+    if parent_id not in (None, "", 0, "0"):
+        try:
+            parent_id = int(parent_id)
+        except (TypeError, ValueError):
+            return JsonResponse(
+                {"error": "That comment is not on this post."}, status=400)
+        parent = (ForumComment.objects
+                  .filter(id=parent_id, post=post)
+                  .select_related("user").first())
+        if parent is None:
+            return JsonResponse(
+                {"error": "That comment is not on this post."}, status=400)
+    reply_to = parent.user if parent else None
+    if parent is None:
+        # old clients could still send a plain @mention with no parent
+        reply_name = (data.get("reply_to") or "").strip().lstrip("@")
+        if reply_name:
+            reply_to = get_user_model().objects.filter(
+                username__iexact=reply_name).first()
+            if reply_to is None:
+                return JsonResponse(
+                    {"error": "That climber does not exist."}, status=400)
+    comment = ForumComment.objects.create(
+        post=post, user=request.user, text=text, parent=parent,
+        reply_to=reply_to)
+    return JsonResponse({
+        "id": comment.id,
+        "user": comment.user.username,
+        "text": comment.text,
+        "parent": comment.parent_id,
+        "reply_to": comment.reply_to.username if comment.reply_to else None,
+        "created_at": comment.created_at.isoformat(),
+    })
+
+
+@require_http_methods(["POST"])
+def forum_comment_like_api(request, comment_id):
+    denied = _login_required_json(request)
+    if denied:
+        return denied
+    comment = get_object_or_404(ForumComment, id=comment_id)
+    liked, count = _toggle_like(comment.likes, request.user)
+    return JsonResponse({"liked": liked, "count": count})
+
+
+@require_http_methods(["POST"])
+def forum_comment_delete_api(request, comment_id):
+    denied = _login_required_json(request)
+    if denied:
+        return denied
+    comment = get_object_or_404(ForumComment, id=comment_id)
+    if comment.user_id != request.user.id and not request.user.is_staff:
+        return JsonResponse({"error": "Not allowed."}, status=403)
+    comment.delete()
     return JsonResponse({"status": "deleted"})
 
 

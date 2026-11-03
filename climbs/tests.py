@@ -13,6 +13,8 @@ from .models import (
     Climb,
     ClimbSet,
     Comment,
+    FORUM_COMMENT_MAX_LENGTH,
+    ForumComment,
     NewsPost,
     tag_for_grade,
 )
@@ -3386,14 +3388,27 @@ class ColourTests(ClimbTestMixin, TestCase):
         self.assertNotContains(board, "#e03131</button>")
 
 
-class NewsTests(ClimbTestMixin, TestCase):
-    def make_post(self, title="Set date", body="Fresh plastic Monday."):
-        return NewsPost.objects.create(title=title, body=body)
+class ForumTests(ClimbTestMixin, TestCase):
+    def make_post(self, title="Set date", body="Fresh plastic Monday.",
+                  author=None, pinned=False):
+        return NewsPost.objects.create(
+            title=title, body=body, author=author, is_pinned=pinned)
 
-    def test_news_lists_newest_first_with_dates(self):
+    def make_comment(self, post, user, text="Nice one", reply_to=None,
+                     parent=None):
+        return ForumComment.objects.create(
+            post=post, user=user, text=text, reply_to=reply_to,
+            parent=parent)
+
+    def set_created(self, item, days):
+        # auto_now_add stamps now; tests need a stable order.
+        NewsPost.objects.filter(pk=item.pk).update(
+            created_at=timezone.now() - timedelta(days=days))
+
+    def test_forum_lists_newest_first_with_dates(self):
         first = self.make_post(title="First post")
         second = self.make_post(title="Second post")
-        response = self.client.get(reverse("climbs:news"))
+        response = self.client.get(reverse("climbs:forum"))
         self.assertEqual(response.status_code, 200)
         content = response.content.decode()
         self.assertLess(
@@ -3402,84 +3417,375 @@ class NewsTests(ClimbTestMixin, TestCase):
             self.assertContains(
                 response,
                 f"{post.created_at.day} {post.created_at.strftime('%b %Y')}")
-        # The News tab marks itself current, exactly once.
+        # The Forum tab marks itself current, exactly once.
         self.assertEqual(content.count('aria-current="page"'), 1)
         pos = content.index('class="nav-link active"')
-        self.assertIn("News", content[pos:pos + 1200])
+        self.assertIn("Forum", content[pos:pos + 1200])
 
-    def test_news_paginates_back(self):
-        for i in range(7):
+    def test_old_news_url_redirects_to_forum(self):
+        response = self.client.get(reverse("climbs:news"))
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.url, reverse("climbs:forum"))
+
+    def test_forum_paginates_back(self):
+        for i in range(9):
             self.make_post(title=f"Post {i:02d}")
-        first = self.client.get(reverse("climbs:news"))
-        self.assertEqual(first.content.decode().count("<article"), 5)
+        first = self.client.get(reverse("climbs:forum"))
+        self.assertEqual(first.content.decode().count("<article"), 8)
         self.assertContains(first, "Page 1 of 2")
-        self.assertContains(first, "Older →")
-        second = self.client.get(reverse("climbs:news") + "?page=2")
-        self.assertEqual(second.content.decode().count("<article"), 2)
+        self.assertContains(first, "Next →")
+        second = self.client.get(reverse("climbs:forum") + "?page=2")
+        self.assertEqual(second.content.decode().count("<article"), 1)
         self.assertContains(second, "Page 2 of 2")
-        self.assertContains(second, "← Newer")
+        self.assertContains(second, "← Previous")
 
-    def test_staff_can_post_edit_delete(self):
-        staff = self.make_user("editor", staff=True)
-        self.client.force_login(staff)
+    def test_sorts_new_old_popular_and_keeps_pins_on_top(self):
+        member = self.make_user("sorter")
+        pinned = self.make_post(title="PINNED")
+        old = self.make_post(title="OLDEST")
+        popular = self.make_post(title="POPULAR")
+        new = self.make_post(title="NEWEST")
+        self.set_created(pinned, 5)
+        self.set_created(old, 4)
+        self.set_created(popular, 3)
+        self.set_created(new, 1)
+        self.make_comment(popular, member, "one")
+        self.make_comment(popular, member, "two")
+        pinned.is_pinned = True
+        pinned.save(update_fields=["is_pinned"])
+
+        def order(url):
+            content = self.client.get(url).content.decode()
+            return {
+                name: content.index(name)
+                for name in ("PINNED", "OLDEST", "POPULAR", "NEWEST")
+            }
+
+        newest = order(reverse("climbs:forum") + "?sort=new")
+        self.assertLess(newest["PINNED"], newest["NEWEST"])
+        self.assertLess(newest["NEWEST"], newest["POPULAR"])
+        self.assertLess(newest["POPULAR"], newest["OLDEST"])
+        oldest = order(reverse("climbs:forum") + "?sort=old")
+        self.assertLess(oldest["PINNED"], oldest["OLDEST"])
+        self.assertLess(oldest["OLDEST"], oldest["POPULAR"])
+        popular_order = order(reverse("climbs:forum") + "?sort=popular")
+        self.assertLess(popular_order["PINNED"], popular_order["POPULAR"])
+        self.assertLess(popular_order["POPULAR"], popular_order["OLDEST"])
+
+    def test_anyone_can_post_and_comment(self):
+        member = self.make_user("poster")
+        self.client.force_login(member)
         response = self.client.post(
-            reverse("climbs:news-create"),
-            json.dumps({"title": "  Comp night  ",
-                        "body": "Friday."}),
+            reverse("climbs:forum-create"),
+            json.dumps({"title": "", "body": "  First post!  "}),
             content_type="application/json")
         self.assertEqual(response.status_code, 200)
         post = NewsPost.objects.get(id=response.json()["id"])
-        self.assertEqual(post.title, "Comp night")
-        self.assertEqual(post.author, staff)
+        self.assertEqual(post.author, member)
+        self.assertEqual(post.body, "First post!")
+        self.assertEqual(post.title, "")
+        self.assertEqual(response.json()["url"],
+                         reverse("climbs:forum-post", args=[post.id]))
+
+        first = self.client.post(
+            reverse("climbs:forum-comment", args=[post.id]),
+            json.dumps({"text": "Hello"}),
+            content_type="application/json")
+        self.assertEqual(first.status_code, 200)
+        self.make_comment(post, member, "Newer")
+        detail = self.client.get(
+            reverse("climbs:forum-post", args=[post.id]))
+        content = detail.content.decode()
+        self.assertContains(detail, "First post!")
+        self.assertContains(detail, "Newer")
+        self.assertLess(content.index("Hello"), content.index("Newer"))
+        self.assertContains(detail, "oldest first")
+
+    def test_comment_api_can_reply_to_a_climber(self):
+        member = self.make_user("member")
+        alex = self.make_user("alex")
+        post = self.make_post(author=member)
+        self.client.force_login(member)
+        response = self.client.post(
+            reverse("climbs:forum-comment", args=[post.id]),
+            json.dumps({"text": "Good shout", "reply_to": "@ALEX"}),
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["reply_to"], "alex")
+        self.assertEqual(
+            ForumComment.objects.get(id=response.json()["id"]).reply_to,
+            alex)
         bad = self.client.post(
-            reverse("climbs:news-create"),
-            json.dumps({"title": "  ", "body": "x"}),
+            reverse("climbs:forum-comment", args=[post.id]),
+            json.dumps({"text": "Hello", "reply_to": "nobody"}),
             content_type="application/json")
         self.assertEqual(bad.status_code, 400)
-        edit = self.client.post(
-            reverse("climbs:news-update", args=[post.id]),
-            json.dumps({"title": "Comp night!", "body": "Friday!"}),
+
+    def test_comment_api_threads_a_reply_under_its_parent(self):
+        member = self.make_user("member")
+        alex = self.make_user("alex")
+        post = self.make_post(author=member)
+        parent = self.make_comment(post, alex, "Top level")
+        self.client.force_login(member)
+        response = self.client.post(
+            reverse("climbs:forum-comment", args=[post.id]),
+            json.dumps({"text": "Nested reply", "parent": parent.id}),
             content_type="application/json")
-        self.assertEqual(edit.status_code, 200)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["parent"], parent.id)
+        self.assertEqual(data["reply_to"], "alex")
+        detail = self.client.get(
+            reverse("climbs:forum-post", args=[post.id]))
+        content = detail.content.decode()
+        self.assertContains(detail, "forum-comment-children")
+        self.assertContains(detail, "replying to <span>@alex</span>")
+        self.assertLess(content.index("Top level"),
+                        content.index("Nested reply"))
+        bad = self.client.post(
+            reverse("climbs:forum-comment", args=[post.id]),
+            json.dumps({"text": "Nope", "parent": 99999}),
+            content_type="application/json")
+        self.assertEqual(bad.status_code, 400)
+
+    def test_post_edit_delete_permissions(self):
+        author = self.make_user("writer")
+        other = self.make_user("reader")
+        staff = self.make_user("mod", staff=True)
+        post = self.make_post(author=author)
+        payload = json.dumps({"title": "Changed", "body": "Changed body."})
+        self.client.force_login(other)
+        self.assertEqual(
+            self.client.post(reverse("climbs:forum-update", args=[post.id]),
+                             payload, content_type="application/json"
+                             ).status_code, 403)
+        self.client.force_login(author)
+        self.assertEqual(
+            self.client.post(reverse("climbs:forum-update", args=[post.id]),
+                             payload, content_type="application/json"
+                             ).status_code, 200)
         post.refresh_from_db()
-        self.assertEqual(post.title, "Comp night!")
-        delete = self.client.post(
-            reverse("climbs:news-delete", args=[post.id]),
-            content_type="application/json")
-        self.assertEqual(delete.status_code, 200)
+        self.assertEqual(post.title, "Changed")
+        self.client.force_login(staff)
+        self.assertEqual(
+            self.client.post(reverse("climbs:forum-delete", args=[post.id]),
+                             "{}", content_type="application/json"
+                             ).status_code, 200)
         self.assertFalse(NewsPost.objects.filter(id=post.id).exists())
 
-    def test_non_staff_cannot_use_news_apis(self):
-        post = self.make_post()
+    def test_only_staff_can_pin(self):
         member = self.make_user("member")
+        staff = self.make_user("pin-staff", staff=True)
+        post = self.make_post(author=member)
+        self.client.force_login(member)
+        response = self.client.post(
+            reverse("climbs:forum-pin", args=[post.id]), "{}",
+            content_type="application/json")
+        self.assertIn(response.status_code, (302, 403))
+        post.refresh_from_db()
+        self.assertFalse(post.is_pinned)
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("climbs:forum-pin", args=[post.id]), "{}",
+            content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        post.refresh_from_db()
+        self.assertTrue(post.is_pinned)
+        self.client.post(
+            reverse("climbs:forum-pin", args=[post.id]), "{}",
+            content_type="application/json")
+        post.refresh_from_db()
+        self.assertFalse(post.is_pinned)
+
+    def test_comment_length_has_a_visible_and_enforced_limit(self):
+        member = self.make_user("limited")
+        post = self.make_post(author=member)
+        self.client.force_login(member)
+        page = self.client.get(
+            reverse("climbs:forum-post", args=[post.id]))
+        self.assertContains(
+            page, f'maxlength="{FORUM_COMMENT_MAX_LENGTH}"')
+        self.assertContains(page, 'id="forum-comment-count"')
+        self.assertContains(page, f"/ {FORUM_COMMENT_MAX_LENGTH}")
+        too_long = self.client.post(
+            reverse("climbs:forum-comment", args=[post.id]),
+            json.dumps({"text": "x" * (FORUM_COMMENT_MAX_LENGTH + 1)}),
+            content_type="application/json")
+        self.assertEqual(too_long.status_code, 400)
+        self.assertIn(str(FORUM_COMMENT_MAX_LENGTH),
+                      too_long.json()["error"])
+        at_limit = self.client.post(
+            reverse("climbs:forum-comment", args=[post.id]),
+            json.dumps({"text": "x" * FORUM_COMMENT_MAX_LENGTH}),
+            content_type="application/json")
+        self.assertEqual(at_limit.status_code, 200)
+
+    def test_reply_note_stays_hidden_until_replying(self):
+        # The note is a flex row, so it needs an explicit [hidden]
+        # rule or every new top-level comment opens saying "Replying".
+        member = self.make_user("note-reader")
+        self.client.force_login(member)
+        note = self.client.get(
+            reverse("climbs:forum-post",
+                    args=[self.make_post().id]))
+        self.assertContains(note, 'id="forum-reply-note" hidden')
+        with open(finders.find("climbs/style.css")) as css_file:
+            self.assertIn(
+                ".forum-reply-note[hidden]", css_file.read())
+
+    def test_posts_and_comments_show_profile_pictures(self):
+        member = self.make_user("pictured")
+        member.avatar = "avatars/pictured.jpg"
+        member.save(update_fields=["avatar"])
+        post = self.make_post(author=member)
+        self.make_comment(post, member, "With a picture")
+        response = self.client.get(
+            reverse("climbs:forum-post", args=[post.id]))
+        self.assertContains(response, "forum-avatar")
+        self.assertContains(response, "/media/avatars/pictured.jpg")
+        self.assertGreaterEqual(
+            response.content.decode().count("forum-avatar"), 2)
+
+    def test_admin_username_is_highlighted(self):
+        staff = self.make_user("coach", staff=True)
+        member = self.make_user("punter")
+        self.make_post(title="STAFFPOST", author=staff)
+        response = self.client.get(reverse("climbs:forum"))
+        self.assertContains(response, "forum-author-staff")
+        self.assertContains(response, "forum-admin-badge")
+        self.assertContains(response, ">Admin</span>")
+        NewsPost.objects.all().delete()
+        self.make_post(title="MEMBERPOST", author=member)
+        response = self.client.get(reverse("climbs:forum"))
+        self.assertNotContains(response, "forum-admin-badge")
+
+    def test_replies_nest_under_their_parent_oldest_first(self):
+        member = self.make_user("member")
+        alex = self.make_user("alex")
+        post = self.make_post(author=member)
+        first = self.make_comment(post, alex, "First")
+        reply = self.make_comment(
+            post, member, "Second", parent=first, reply_to=alex)
+        later = self.make_comment(post, member, "Later top level")
+        ForumComment.objects.filter(pk=first.pk).update(
+            created_at=timezone.now() - timedelta(hours=3))
+        ForumComment.objects.filter(pk=reply.pk).update(
+            created_at=timezone.now() - timedelta(hours=2))
+        ForumComment.objects.filter(pk=later.pk).update(
+            created_at=timezone.now() - timedelta(hours=1))
+        detail = self.client.get(
+            reverse("climbs:forum-post", args=[post.id]))
+        self.assertContains(detail, "forum-comment-children")
+        self.assertContains(detail, "replying to <span>@alex</span>")
+        content = detail.content.decode()
+        self.assertLess(content.index("First"), content.index("Second"))
+        self.assertLess(content.index("Second"), content.index("Later top level"))
+        self.assertEqual(
+            content.count('class="forum-comment-children"'), 1)
+        self.assertEqual(content.count('class="forum-comment"'), 3)
+
+    def test_likes_toggle_and_comments_can_be_liked(self):
+        member = self.make_user("liker")
+        post = self.make_post(author=member)
+        comment = self.make_comment(post, member)
+        self.client.force_login(member)
+        url = reverse("climbs:forum-like", args=[post.id])
+        first = self.client.post(url, "{}", content_type="application/json")
+        self.assertEqual(first.json(), {"liked": True, "count": 1})
+        second = self.client.post(url, "{}", content_type="application/json")
+        self.assertEqual(second.json(), {"liked": False, "count": 0})
+        like_comment = reverse("climbs:forum-comment-like",
+                               args=[comment.id])
+        self.assertTrue(
+            self.client.post(like_comment, "{}",
+                             content_type="application/json"
+                             ).json()["liked"])
+        self.assertEqual(comment.likes.count(), 1)
+
+    def test_admin_can_delete_comments_authors_only_their_own(self):
+        author = self.make_user("commenter")
+        other = self.make_user("other")
+        staff = self.make_user("mod", staff=True)
+        post = self.make_post(author=author)
+        comment = self.make_comment(post, author)
+        self.client.force_login(other)
+        self.assertEqual(self.client.post(
+            reverse("climbs:forum-comment-delete", args=[comment.id]),
+            "{}", content_type="application/json").status_code, 403)
+        self.client.force_login(author)
+        self.assertEqual(self.client.post(
+            reverse("climbs:forum-comment-delete", args=[comment.id]),
+            "{}", content_type="application/json").status_code, 200)
+        comment = self.make_comment(post, author, "second")
+        self.client.force_login(staff)
+        self.assertEqual(self.client.post(
+            reverse("climbs:forum-comment-delete", args=[comment.id]),
+            "{}", content_type="application/json").status_code, 200)
+        self.assertEqual(ForumComment.objects.count(), 0)
+
+    def test_orphaned_post_has_no_guest_manage_buttons(self):
+        # A post whose author was deleted has author_id None, which
+        # must not match an anonymous viewer's None id.
+        post = self.make_post(author=None)
+        for url in (reverse("climbs:forum"),
+                    reverse("climbs:forum-post", args=[post.id])):
+            response = self.client.get(url)
+            self.assertNotContains(
+                response,
+                f'data-del-url="/forum/{post.id}/delete/"')
+            self.assertNotContains(
+                response, f'data-edit-post="{post.id}"')
+
+    def test_guests_cannot_post_comment_or_like(self):
+        post = self.make_post()
         payload = json.dumps({"title": "Hi", "body": "There"})
-        for url in (reverse("climbs:news-create"),
-                    reverse("climbs:news-update", args=[post.id]),
-                    reverse("climbs:news-delete", args=[post.id])):
+        for url in (reverse("climbs:forum-create"),
+                    reverse("climbs:forum-comment", args=[post.id]),
+                    reverse("climbs:forum-like", args=[post.id])):
             with self.subTest(url=url):
                 response = self.client.post(
                     url, payload, content_type="application/json")
-                self.assertIn(response.status_code, (302, 403))
-                self.client.force_login(member)
-                response = self.client.post(
-                    url, payload, content_type="application/json")
-                self.assertIn(response.status_code, (302, 403))
-                self.client.logout()
+                self.assertEqual(response.status_code, 403)
 
-    def test_post_form_shows_for_staff_only(self):
+    def test_composer_is_a_modal_and_pin_is_staff_only(self):
         self.make_post(title="Hello")
         member = self.make_user("reader")
         self.client.force_login(member)
-        response = self.client.get(reverse("climbs:news"))
-        self.assertNotContains(response, 'id="news-publish"')
-        self.assertNotContains(response, "data-edit-post")
-        self.assertNotContains(response, "data-del-post")
+        response = self.client.get(reverse("climbs:forum"))
+        self.assertContains(response, 'id="forum-new-post"')
+        self.assertContains(response, 'id="forum-post-modal"')
+        self.assertContains(response, 'id="forum-publish"')
+        self.assertContains(response, 'id="forum-body"')
+        self.assertNotContains(response, "data-pin-url")
+        # The writer lives in the modal, not in an always-open card.
+        self.assertNotContains(
+            response, 'class="card forum-composer"')
+        self.client.logout()
+        response = self.client.get(reverse("climbs:forum"))
+        self.assertNotContains(response, 'id="forum-new-post"')
+        self.assertNotContains(response, 'id="forum-post-modal"')
+        self.assertContains(response, "Sign in to post")
         staff = self.make_user("writer", staff=True)
         self.client.force_login(staff)
-        response = self.client.get(reverse("climbs:news"))
-        self.assertContains(response, 'id="news-publish"')
-        self.assertContains(response, "data-edit-post")
-        self.assertContains(response, "data-del-post")
+        response = self.client.get(reverse("climbs:forum"))
+        self.assertContains(response, 'id="forum-new-post"')
+        self.assertContains(response, "data-pin-url")
+
+    def test_comment_writer_is_a_modal_on_the_post_page(self):
+        member = self.make_user("reader")
+        post = self.make_post(author=member)
+        self.client.force_login(member)
+        response = self.client.get(
+            reverse("climbs:forum-post", args=[post.id]))
+        self.assertContains(response, 'id="forum-add-comment"')
+        self.assertContains(response, 'id="forum-comment-modal"')
+        self.assertContains(response, 'id="forum-comment-form"')
+        # Reply state starts hidden until a Reply button is used.
+        self.assertContains(
+            response, 'id="forum-reply-note" hidden')
+        # No always-open comment box above the thread.
+        self.assertEqual(
+            response.content.decode().count('id="forum-comment-text"'), 1)
 
 
 class DraftSetEditTests(ClimbTestMixin, TestCase):

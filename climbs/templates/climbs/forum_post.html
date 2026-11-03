@@ -1,0 +1,296 @@
+{% extends "climbs/base.html" %}
+
+{% block title %}{% if post.title %}{{ post.title }}{% else %}Forum post{% endif %}{% endblock %}
+
+{% block content %}
+<div class="forum-page">
+    <p class="forum-back"><a href="{% url 'climbs:forum' %}?sort={{ back_sort }}">← Back to the forum</a></p>
+
+    <article class="card forum-post forum-post-full{% if post.is_pinned %} pinned{% endif %}" data-post="{{ post.id }}">
+        {% if post.is_pinned %}
+            <span class="forum-pin-badge">Pinned</span>
+        {% endif %}
+        {% if post.title %}
+            <h2 class="forum-post-title">{{ post.title }}</h2>
+        {% endif %}
+        <p class="forum-meta">
+            {% if post.author %}
+                {% if post.author.avatar %}
+                    <img src="{{ post.author.avatar.url }}" alt="" class="forum-avatar">
+                {% else %}
+                    <span class="forum-avatar avatar-fallback" aria-hidden="true">{{ post.author.username|first|upper }}</span>
+                {% endif %}
+                <button type="button" class="forum-author{% if post.author_is_staff %} forum-author-staff{% endif %}" data-username="{{ post.author.username }}" title="View climber">{{ post.author.username }}</button>
+                {% if post.author_is_staff %}<span class="forum-admin-badge">Admin</span>{% endif %}
+            {% else %}
+                <span class="forum-avatar avatar-fallback" aria-hidden="true">G</span>
+                <span class="forum-author">The gym</span>
+            {% endif %}
+            <span class="muted">· {{ post.created_at|date:"j M Y, H:i" }}</span>
+        </p>
+        <div class="forum-body">{{ post.body|linebreaksbr }}</div>
+
+        <div class="forum-actions">
+            {% if user.is_authenticated %}
+                <button class="forum-action forum-like{% if post.is_liked %} liked{% endif %}" type="button" data-like-post="{{ post.id }}" data-like-url="{% url 'climbs:forum-like' post.id %}" aria-pressed="{{ post.is_liked|yesno:'true,false' }}" aria-label="Like post">
+                    <span aria-hidden="true">♥</span> <span data-like-count>{{ post.like_count }}</span>
+                </button>
+            {% else %}
+                <a class="forum-action forum-like" href="{% url 'login' %}?next={{ request.path }}" title="Sign in to like">
+                    <span aria-hidden="true">♥</span> {{ post.like_count }}
+                </a>
+            {% endif %}
+            <a class="forum-action" href="#comments"><span aria-hidden="true">💬</span> {{ comment_count }} comment{{ comment_count|pluralize }}</a>
+            {% if user.is_staff %}
+                <button class="btn btn-sm btn-secondary" type="button" data-pin-post="{{ post.id }}" data-pin-url="{% url 'climbs:forum-pin' post.id %}">{% if post.is_pinned %}Unpin{% else %}Pin{% endif %}</button>
+            {% endif %}
+            {% if user.is_authenticated %}
+                {% if user.is_staff or post.author_id == user.id %}
+                    <button class="btn btn-sm btn-secondary" type="button" data-edit-post="{{ post.id }}">Edit</button>
+                    <button class="btn btn-sm btn-secondary forum-danger" type="button" data-del-post="{{ post.id }}" data-del-url="{% url 'climbs:forum-delete' post.id %}">Delete</button>
+                {% endif %}
+            {% endif %}
+        </div>
+
+        {% if user.is_authenticated %}
+            {% if user.is_staff or post.author_id == user.id %}
+                <div class="forum-edit" data-edit-form="{{ post.id }}" hidden>
+                    <label>Title <span class="muted">(optional)</span></label>
+                    <input type="text" data-edit-title="{{ post.id }}" maxlength="200" value="{{ post.title }}">
+                    <label>Post</label>
+                    <textarea rows="4" maxlength="5000" data-edit-body="{{ post.id }}">{{ post.body }}</textarea>
+                    <button class="btn btn-md" type="button" data-save-post="{{ post.id }}" data-save-url="{% url 'climbs:forum-update' post.id %}">Save changes</button>
+                </div>
+            {% endif %}
+        {% endif %}
+    </article>
+
+    <section class="card forum-comments" id="comments">
+        <div class="forum-comments-head">
+            <div>
+                <h2>Comments</h2>
+                <span class="muted">{{ comment_count }} · oldest first</span>
+            </div>
+            {% if user.is_authenticated %}
+                <button class="btn btn-sm" id="forum-add-comment" type="button">Comment</button>
+            {% else %}
+                <a class="btn btn-sm" href="{% url 'login' %}?next={{ request.path }}">Sign in to comment</a>
+            {% endif %}
+        </div>
+
+        <div class="forum-comment-list">
+            {% for comment in comments %}
+                {% include "climbs/_forum_comment.html" with comment=comment %}
+            {% empty %}
+                <p class="muted forum-no-comments">No comments yet — say something.</p>
+            {% endfor %}
+        </div>
+    </section>
+
+    {% if user.is_authenticated %}
+        <div class="forum-modal" id="forum-comment-modal" aria-hidden="true">
+            <div class="forum-modal-scrim" data-close-comment-modal></div>
+            <section class="forum-modal-box" role="dialog" aria-modal="true" aria-labelledby="forum-comment-modal-title">
+                <button class="forum-modal-x" type="button" data-close-comment-modal aria-label="Close">×</button>
+                <h2 id="forum-comment-modal-title">Add a comment</h2>
+                <form id="forum-comment-form" data-comment-url="{% url 'climbs:forum-comment' post.id %}">
+                    {% csrf_token %}
+                    <div class="forum-reply-note" id="forum-reply-note" hidden>
+                        Replying to <strong data-reply-name></strong>
+                        <button class="forum-action" type="button" id="forum-cancel-reply">Cancel</button>
+                    </div>
+                    <label for="forum-comment-text" class="sr-only">Your comment</label>
+                    <textarea id="forum-comment-text" rows="4" maxlength="{{ comment_max_length }}" placeholder="Add a comment…"></textarea>
+                    <div class="forum-compose-actions">
+                        <span class="forum-char-count" aria-live="polite"><span id="forum-comment-count">0</span> / {{ comment_max_length }}</span>
+                        <button class="btn btn-md" id="forum-comment-send" type="submit">Comment</button>
+                    </div>
+                </form>
+            </section>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "climbs/_forum_helpers.html" %}
+<script>
+(function () {
+    document.querySelectorAll('[data-like-post], [data-like-comment]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            try {
+                const data = await forumApi(btn.dataset.likeUrl, 'POST');
+                btn.querySelector('[data-like-count]').textContent = data.count;
+                btn.classList.toggle('liked', data.liked);
+                btn.setAttribute('aria-pressed', String(data.liked));
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    });
+
+    const pin = document.querySelector('[data-pin-post]');
+    if (pin) {
+        pin.addEventListener('click', async () => {
+            try {
+                await forumApi(pin.dataset.pinUrl, 'POST');
+                location.reload();
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    }
+
+    const delPost = document.querySelector('[data-del-post]');
+    if (delPost) {
+        delPost.addEventListener('click', async () => {
+            if (!confirm('Delete this post and all its comments?')) return;
+            try {
+                await forumApi(delPost.dataset.delUrl, 'POST');
+                location.href = "{% url 'climbs:forum' %}";
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    }
+
+    const editToggle = document.querySelector('[data-edit-post]');
+    const editForm = document.querySelector('[data-edit-form]');
+    if (editToggle && editForm) {
+        editToggle.addEventListener('click', () => {
+            editForm.hidden = !editForm.hidden;
+        });
+    }
+
+    const savePost = document.querySelector('[data-save-post]');
+    if (savePost) {
+        savePost.addEventListener('click', async () => {
+            const id = savePost.dataset.savePost;
+            const title = document.querySelector(
+                '[data-edit-title="' + id + '"]').value.trim();
+            const body = document.querySelector(
+                '[data-edit-body="' + id + '"]').value.trim();
+            if (!body) {
+                alert('Write something first.');
+                return;
+            }
+            try {
+                await forumApi(savePost.dataset.saveUrl, 'POST', {title, body});
+                location.reload();
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    }
+
+    const form = document.getElementById('forum-comment-form');
+    const modal = document.getElementById('forum-comment-modal');
+    if (!form || !modal) return;
+    const text = document.getElementById('forum-comment-text');
+    const note = document.getElementById('forum-reply-note');
+    const noteName = note.querySelector('[data-reply-name]');
+    const title = document.getElementById('forum-comment-modal-title');
+    const count = document.getElementById('forum-comment-count');
+    const limit = text.maxLength;
+    let replyParentId = null;
+
+    function updateCount() {
+        const used = text.value.length;
+        count.textContent = used;
+        count.parentElement.classList.toggle(
+            'near-limit', used >= limit * 0.9);
+    }
+
+    text.addEventListener('input', updateCount);
+    updateCount();
+
+    function openCommentModal(parentId, username) {
+        replyParentId = parentId || null;
+        note.hidden = !replyParentId;
+        noteName.textContent = replyParentId ? '@' + username : '';
+        title.textContent = replyParentId
+            ? 'Reply to @' + username
+            : 'Add a comment';
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+        updateCount();
+        text.focus();
+    }
+
+    function closeCommentModal(returnFocus) {
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+        if (returnFocus) {
+            const opener = replyParentId
+                ? document.querySelector(
+                    '[data-reply-comment="' + replyParentId + '"]')
+                : document.getElementById('forum-add-comment');
+            if (opener) opener.focus();
+        }
+    }
+
+    document.getElementById('forum-add-comment').addEventListener(
+        'click', () => openCommentModal(null, ''));
+    document.querySelectorAll('[data-close-comment-modal]').forEach((el) => {
+        el.addEventListener('click', () => closeCommentModal(true));
+    });
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal.classList.contains('open')) {
+            closeCommentModal(true);
+        }
+    });
+
+    // Reply buttons are in the recursive comment partial, so one
+    // delegated listener covers every level of the thread.
+    document.addEventListener('click', (event) => {
+        const reply = event.target.closest('[data-reply-comment]');
+        if (reply) {
+            openCommentModal(reply.dataset.replyComment,
+                             reply.dataset.replyUser);
+        }
+    });
+
+    document.getElementById('forum-cancel-reply').addEventListener('click', () => {
+        replyParentId = null;
+        note.hidden = true;
+        noteName.textContent = '';
+        title.textContent = 'Add a comment';
+        text.focus();
+    });
+
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const body = text.value.trim();
+        if (!body) {
+            alert('Write a comment first.');
+            return;
+        }
+        const send = document.getElementById('forum-comment-send');
+        send.disabled = true;
+        try {
+            await forumApi(form.dataset.commentUrl, 'POST', {
+                text: body,
+                parent: replyParentId,
+            });
+            location.hash = 'comments';
+            location.reload();
+        } catch (err) {
+            alert(err.message);
+            send.disabled = false;
+        }
+    });
+
+    document.querySelectorAll('[data-del-comment]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            if (!confirm('Delete this comment and any replies?')) return;
+            try {
+                await forumApi(btn.dataset.delUrl, 'POST');
+                location.reload();
+            } catch (err) {
+                alert(err.message);
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

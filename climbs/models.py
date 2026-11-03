@@ -440,20 +440,71 @@ class Rating(models.Model):
 
 
 class NewsPost(models.Model):
-    """gym news posts, newest first. staff post from the news page"""
-    title = models.CharField(max_length=200)
+    """one forum post. the model keeps the old NewsPost name so the
+    existing rows and migrations still line up. pinned posts sort
+    above everything, then newest (or whichever order is picked)"""
+    title = models.CharField(max_length=200, blank=True, default="")
     body = models.TextField(max_length=5000)
     author = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='news_posts',
     )
+    is_pinned = models.BooleanField(default=False)
+    likes = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='liked_forum_posts',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-is_pinned', '-created_at']
+
+    def __str__(self):
+        return self.title or self.body[:60]
+
+    @property
+    def author_is_staff(self):
+        return bool(self.author and self.author.is_staff)
+
+
+FORUM_COMMENT_MAX_LENGTH = 2000
+
+
+class ForumComment(models.Model):
+    """a comment on a forum post. replies point at their parent comment
+    so the page can draw a reddit-style thread, oldest first. reply_to
+    is kept for old mentions and is filled from the parent on new
+    replies"""
+    post = models.ForeignKey(
+        NewsPost, on_delete=models.CASCADE, related_name='forum_comments')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name='forum_comments')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='replies',
+    )
+    reply_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+    )
+    text = models.TextField(max_length=FORUM_COMMENT_MAX_LENGTH)
+    likes = models.ManyToManyField(
+        settings.AUTH_USER_MODEL, blank=True,
+        related_name='liked_forum_comments',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['created_at']
 
     def __str__(self):
-        return self.title
+        return f"{self.user} on {self.post}: {self.text[:40]}"
+
+    @property
+    def user_is_staff(self):
+        return bool(self.user and self.user.is_staff)
 
 
 class Comment(models.Model):

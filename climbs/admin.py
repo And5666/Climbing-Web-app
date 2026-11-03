@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
-    Ascent, AscentAudit, Climb, Flag, GradeSuggestion, ModerationLog,
-    Rating,
+    Ascent, AscentAudit, Climb, Flag, ForumComment, GradeSuggestion,
+    ModerationLog, NewsPost, Rating,
 )
 
 admin.site.register(Climb)
@@ -11,3 +11,5 @@ admin.site.register(Rating)
 admin.site.register(AscentAudit)
 admin.site.register(Flag)
 admin.site.register(ModerationLog)
+admin.site.register(NewsPost)
+admin.site.register(ForumComment)
