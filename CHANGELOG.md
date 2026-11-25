@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+
+- Logins last 90 days instead of 14, and every request pushes the
+  expiry back, so climbers who visit stay signed in. Being away for
+  three months is what signs you out now, not the calendar.
+
 ## 1.2.1
 
 - Forum comments now show a live character counter and enforce the

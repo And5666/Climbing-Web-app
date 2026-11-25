@@ -1,3 +1,5 @@
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -32,6 +34,29 @@ class LoginPageTests(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertIn("_auth_user_id", self.client.session)
+
+    def test_login_keeps_climbers_signed_in_for_ninety_days(self):
+        self.client.post(
+            reverse("login"),
+            {"username": "login_user", "password": "test-pass-123"},
+        )
+        self.assertGreaterEqual(
+            self.client.session.get_expiry_age(), 89 * 24 * 60 * 60)
+
+    def test_a_page_view_renews_the_login_expiry(self):
+        self.client.post(
+            reverse("login"),
+            {"username": "login_user", "password": "test-pass-123"},
+        )
+        # with SESSION_SAVE_EVERY_REQUEST on, an ordinary request re-saves
+        # the session and starts the ninety days again instead of letting
+        # the clock run out while the climber is using the site
+        with mock.patch(
+            "django.contrib.sessions.backends.db.SessionStore.save",
+            autospec=True,
+        ) as save:
+            self.client.get(reverse("login"))
+        save.assert_called()
 
 
 class SignupPageTests(TestCase):

@@ -42,6 +42,12 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
+# climbers stay signed in: a login lasts 90 days and every request pushes
+# the expiry back, so the clock only runs while someone is away. django's
+# default is 14 days measured from the login, which signs people out mid-use
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 90
+SESSION_SAVE_EVERY_REQUEST = True
+
 
 # apps
 INSTALLED_APPS = [
